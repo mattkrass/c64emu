@@ -22,4 +22,4 @@ tmux.1.*
 CMakeCache.txt
 CMakeFiles/
 *.cmake
-
+log.txt

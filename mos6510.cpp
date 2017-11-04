@@ -513,11 +513,14 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
     ++m_programCounter;
     uint16_t addr = 0;
     switch(mode) {
+        case AddrMode::IMP: // do nothing here
+            break;
         case AddrMode::IMM:
             addr = m_programCounter++;
             break;
         case AddrMode::REL:
-            addr = m_programCounter + ((int8_t)m_sramPtr[m_programCounter++]) + 1;
+            addr = m_programCounter + ((int8_t)m_sramPtr[m_programCounter]) + 1;
+            ++m_programCounter;
             break;
         case AddrMode::ZP:
             addr = m_sramPtr[m_programCounter++];
