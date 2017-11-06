@@ -15,7 +15,7 @@ etc/
 Makefile
 Makefile.in
 configure
-tmux.1.*
+*.bin
 *.dSYM
 *.swp
 *.tsk
