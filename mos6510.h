@@ -1,6 +1,8 @@
 #ifndef INCLUDED_MOS6510_H
 #define INCLUDED_MOS6510_H
 
+#include "memorycontroller.h"
+
 namespace MOS6510 {
 struct StatusRegister {
     union {
@@ -144,21 +146,18 @@ enum CpuState {
 
 class Cpu {
 private:
-    uint16_t        m_programCounter;
-    uint16_t        m_stackPointer;
-    uint8_t         m_accumulator;
-    uint8_t         m_xIndex;
-    uint8_t         m_yIndex;
-    StatusRegister  m_status;
-    uint8_t*        m_sramPtr;
-
-    uint64_t        m_cycleCounter;
-    bool            m_ownsSramPtr;
-
+    uint16_t            m_programCounter;
+    uint16_t            m_stackPointer;
+    uint8_t             m_accumulator;
+    uint8_t             m_xIndex;
+    uint8_t             m_yIndex;
+    StatusRegister      m_status;
+    MemoryController    m_memory;
 
     // internal operations 
     void adc(const AddrMode mode);
     void andi(const AddrMode mode);
+    void bit(const AddrMode mode);
     void br(uint8_t flag, uint8_t condition);
     void clc();
     void cld();
@@ -173,11 +172,17 @@ private:
     void jmp(const AddrMode mode);
     void jsr();
     void ldr(uint8_t & r, const AddrMode mode);
+    void lsr(const AddrMode mode);
     void nop();
     void ora(const AddrMode mode);
+    void pha();
+    void php();
+    void pla();
+    void plp();
     void rol(const AddrMode mode);
     void ror(const AddrMode mode);
     void rts();
+    void sbc(const AddrMode mode);
     void sec();
     void sed();
     void sei();
@@ -188,15 +193,11 @@ private:
 
     // utility
     void init();
-    uint16_t readWord(uint16_t addr);
-    void writeWord(uint16_t word, uint16_t addr);
     uint16_t computeAddress(const AddrMode mode);
 
 public:
-    Cpu();
     Cpu(const Cpu& rhs);
-    // move constructor?
-    Cpu(uint8_t *sramPtr);
+    Cpu(uint8_t *romPtr);
     ~Cpu();
 
     void execute();

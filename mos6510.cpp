@@ -9,7 +9,7 @@ namespace MOS6510 {
 void Cpu::execute()
 {
     uint16_t programCounter = m_programCounter;
-    uint8_t opcode = m_sramPtr[programCounter];
+    uint8_t opcode = m_memory.read(programCounter);
 
     std::string ocs = "";
     switch (opcode) {
@@ -44,8 +44,8 @@ void Cpu::execute()
         case BCC_rel: ocs = "BCC_rel"; br(m_status.bits.carryFlag, 0);    break;
         case BCS_rel: ocs = "BCS_rel"; br(m_status.bits.carryFlag, 1);    break;
         case BEQ_rel: ocs = "BEQ_rel"; br(m_status.bits.zeroFlag, 1);     break;
-        case BIT_abs: ocs = "BIT_abs"; break;
-        case BIT_zp: ocs = "BIT_zp"; break;
+        case BIT_abs: ocs = "BIT_abs"; bit(AddrMode::ABS);                break;
+        case BIT_zp:  ocs = "BIT_zp";  bit(AddrMode::ZP);                 break;
         case BMI_rel: ocs = "BMI_rel"; br(m_status.bits.negativeFlag, 1); break;
         case BNE_rel: ocs = "BNE_rel"; br(m_status.bits.zeroFlag, 0);     break;
         case BPL_rel: ocs = "BPL_rel"; br(m_status.bits.negativeFlag, 0); break;
@@ -145,11 +145,11 @@ void Cpu::execute()
         case LDY_imm: ocs = "LDY_imm"; ldr(m_yIndex, AddrMode::IMM);      break;
         case LDY_zp:  ocs = "LDY_zp";  ldr(m_yIndex, AddrMode::ZP);       break;
         case LDY_zpx: ocs = "LDY_zpx"; ldr(m_yIndex, AddrMode::ZPX);      break;
-        case LSR:     ocs = "LSR";                                        break;
-        case LSR_abs: ocs = "LSR_abs";                                    break;
-        case LSR_abx: ocs = "LSR_abx";                                    break;
-        case LSR_zp:  ocs = "LSR_zp";                                     break;
-        case LSR_zpx: ocs = "LSR_zpx";                                    break;
+        case LSR:     ocs = "LSR";     lsr(AddrMode::IMP);                break;
+        case LSR_abs: ocs = "LSR_abs"; lsr(AddrMode::ABS);                break;
+        case LSR_abx: ocs = "LSR_abx"; lsr(AddrMode::ABX);                break;
+        case LSR_zp:  ocs = "LSR_zp";  lsr(AddrMode::ZP);                 break;
+        case LSR_zpx: ocs = "LSR_zpx"; lsr(AddrMode::ZPX);                break;
         case NOP1:    ocs = "NOP1";    nop();                             break;
         case NOP3:    ocs = "NOP3";    nop();                             break;
         case NOP5:    ocs = "NOP5";    nop();                             break;
@@ -186,10 +186,10 @@ void Cpu::execute()
         case ORA_izy: ocs = "ORA_izy"; ora(AddrMode::IZY);                break;
         case ORA_zp:  ocs = "ORA_zp";  ora(AddrMode::ZP);                 break;
         case ORA_zpx: ocs = "ORA_zpx"; ora(AddrMode::ZPX);                break;
-        case PHA: ocs = "PHA"; break;
-        case PHP: ocs = "PHP"; break;
-        case PLA: ocs = "PLA"; break;
-        case PLP: ocs = "PLP"; break;
+        case PHA:     ocs = "PHA";     pha();                             break;
+        case PHP:     ocs = "PHP";     php();                             break;
+        case PLA:     ocs = "PLA";     pla();                             break;
+        case PLP:     ocs = "PLP";     plp();                             break;
         case RLA_abs: ocs = "RLA_abs"; break;
         case RLA_abx: ocs = "RLA_abx"; break;
         case RLA_aby: ocs = "RLA_aby"; break;
@@ -216,21 +216,21 @@ void Cpu::execute()
         case RRA_zpx: ocs = "RRA_zpx"; break;
         case RTI: ocs = "RTI"; break;
         case RTS:     ocs = "RTS";     rts();                             break;
-        case SAX_abs: ocs = "SAX_abs"; break;
-        case SAX_izx: ocs = "SAX_izx"; break;
-        case SAX_zpy: ocs = "SAX_zpy"; break;
-        case SBC_abs: ocs = "SBC_abs"; break;
-        case SBC_abx: ocs = "SBC_abx"; break;
-        case SBC_aby: ocs = "SBC_aby"; break;
-        case SBC_im2: ocs = "SBC_im2"; break;
-        case SBC_imm: ocs = "SBC_imm"; break;
-        case SBC_izx: ocs = "SBC_izx"; break;
-        case SBC_izy: ocs = "SBC_izy"; break;
-        case SBC_zp: ocs = "SBC_zp"; break;
-        case SBC_zpx: ocs = "SBC_zpx"; break;
-        case SEC: ocs = "SEC"; break;
-        case SED: ocs = "SED"; break;
-        case SEI: ocs = "SEI"; sei(); break;
+        case SAX_abs: ocs = "SAX_abs";                                    break;
+        case SAX_izx: ocs = "SAX_izx";                                    break;
+        case SAX_zpy: ocs = "SAX_zpy";                                    break;
+        case SBC_abs: ocs = "SBC_abs"; sbc(AddrMode::ABS);                break;
+        case SBC_abx: ocs = "SBC_abx"; sbc(AddrMode::ABX);                break;
+        case SBC_aby: ocs = "SBC_aby"; sbc(AddrMode::ABY);                break;
+        case SBC_im2: ocs = "SBC_im2"; sbc(AddrMode::IMM);                break;
+        case SBC_imm: ocs = "SBC_imm"; sbc(AddrMode::IMM);                break;
+        case SBC_izx: ocs = "SBC_izx"; sbc(AddrMode::IZX);                break;
+        case SBC_izy: ocs = "SBC_izy"; sbc(AddrMode::IZY);                break;
+        case SBC_zp:  ocs = "SBC_zp";  sbc(AddrMode::ZP);                 break;
+        case SBC_zpx: ocs = "SBC_zpx"; sbc(AddrMode::ZPX);                break;
+        case SEC:     ocs = "SEC";     sec();                             break;
+        case SED:     ocs = "SED";     sed();                             break;
+        case SEI:     ocs = "SEI";     sei();                             break;
         case SHX_aby: ocs = "SHX_aby"; break;
         case SHY_abx: ocs = "SHY_abx"; break;
         case SLO_abs: ocs = "SLO_abs"; break;
@@ -272,7 +272,7 @@ void Cpu::execute()
         default: ocs = "unknown"; break;
     }
 
-    printf("PC:0x%04X, OP:%7s, NEW PC:0x%4X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, M:0x%02X\n",
+    printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, SP:0x%03X\n",
             programCounter,
             ocs.c_str(),
             m_programCounter,
@@ -280,13 +280,14 @@ void Cpu::execute()
             m_xIndex,
             m_yIndex,
             m_status.all,
-            m_sramPtr[0xD012]);
+            m_stackPointer);
+            
     assert(programCounter != m_programCounter); // if these are equal we did nothing
 }
 
 void Cpu::adc(const AddrMode mode)
 {
-    uint8_t op = m_sramPtr[computeAddress(mode)];
+    uint8_t op = m_memory.read(computeAddress(mode));
     uint16_t result = ((uint16_t)m_accumulator) + op + m_status.bits.carryFlag;
     m_status.bits.carryFlag = (result > 0xFF);
     m_accumulator = result & 0xFF;
@@ -294,9 +295,17 @@ void Cpu::adc(const AddrMode mode)
 
 void Cpu::andi(const AddrMode mode)
 {
-    m_accumulator &= m_sramPtr[computeAddress(mode)];
+    m_accumulator &= m_memory.read(computeAddress(mode));
     m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
     m_status.bits.zeroFlag = (0 == m_accumulator);
+}
+
+void Cpu::bit(const AddrMode mode)
+{
+    uint8_t op = m_memory.read(computeAddress(mode));
+    m_status.bits.negativeFlag = (op & 0x80) > 0;
+    m_status.bits.overflowFlag = (op & 0x40) > 0;
+    m_status.bits.zeroFlag = (0 == (m_accumulator & op));
 }
 
 void Cpu::br(uint8_t flag, uint8_t condition)
@@ -334,7 +343,7 @@ void Cpu::clv()
 
 void Cpu::cmp(uint8_t r, const AddrMode mode)
 {
-    uint8_t op = m_sramPtr[computeAddress(mode)];
+    uint8_t op = m_memory.read(computeAddress(mode));
     m_status.bits.carryFlag = (op <= r);
     m_status.bits.negativeFlag = ((r - op) & 0x80) > 0;
     m_status.bits.zeroFlag = (op == r);
@@ -342,7 +351,11 @@ void Cpu::cmp(uint8_t r, const AddrMode mode)
 
 void Cpu::dec(const AddrMode mode)
 {
-    der(m_sramPtr[computeAddress(mode)]);
+    uint16_t addr = computeAddress(mode);
+    uint8_t tmp = m_memory.read(addr);
+    --m_programCounter; // unwind it so der can click it forward again safely
+    der(tmp);
+    m_memory.write(addr, tmp);
 }
 
 void Cpu::der(uint8_t& r)
@@ -355,14 +368,18 @@ void Cpu::der(uint8_t& r)
 
 void Cpu::eor(const AddrMode mode)
 {
-    m_accumulator ^= m_sramPtr[computeAddress(mode)];
+    m_accumulator ^= m_memory.read(computeAddress(mode));
     m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
     m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::inc(const AddrMode mode)
 {
-    inr(m_sramPtr[computeAddress(mode)]);
+    uint16_t addr = computeAddress(mode);
+    uint8_t tmp = m_memory.read(addr);
+    --m_programCounter; // unwind it so inr can click it forward again safely
+    inr(tmp);
+    m_memory.write(addr, tmp);
 }
 
 void Cpu::inr(uint8_t& r)
@@ -380,16 +397,39 @@ void Cpu::jmp(const AddrMode mode)
 
 void Cpu::jsr()
 {
-    writeWord(m_programCounter + 2, m_stackPointer - 1);
+    m_memory.writeWord(m_stackPointer - 1, m_programCounter + 2);
     m_stackPointer -= 2;
-    m_programCounter = readWord(++m_programCounter);
+    m_programCounter = m_memory.readWord(++m_programCounter);
 }
 
 void Cpu::ldr(uint8_t &r, const AddrMode mode)
 {
-    r = m_sramPtr[computeAddress(mode)];
+    r = m_memory.read(computeAddress(mode));
     m_status.bits.negativeFlag = (r & 0x80) > 0;
     m_status.bits.zeroFlag = (0 == r);
+}
+
+void Cpu::lsr(const AddrMode mode)
+{
+    uint16_t addr = 0;
+    uint8_t tmp = m_accumulator;
+    if(AddrMode::IMP != mode) {
+        addr = computeAddress(mode);
+        tmp = m_memory.read(addr);;
+    } else {
+        ++m_programCounter;
+    }
+    
+    bool newCarry = (tmp & 0x01) > 0;
+    tmp >>= 1;
+    m_status.bits.negativeFlag = (tmp & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == tmp);
+    m_status.bits.carryFlag = newCarry;
+    if(AddrMode::IMP != mode) {
+        m_memory.write(addr, tmp);
+    } else {
+        m_accumulator = tmp;
+    }
 }
 
 void Cpu::nop()
@@ -399,49 +439,101 @@ void Cpu::nop()
 
 void Cpu::ora(const AddrMode mode)
 {
-    m_accumulator |= m_sramPtr[computeAddress(mode)];
+    m_accumulator |= m_memory.read(computeAddress(mode));
     m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
     m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
+void Cpu::pha()
+{
+    m_memory.write(m_stackPointer--, m_accumulator);
+    ++m_programCounter;
+}
+
+void Cpu::php()
+{
+    m_memory.write(m_stackPointer--, m_status.all);
+    ++m_programCounter;
+}
+
+void Cpu::pla()
+{
+    m_accumulator = m_memory.read(++m_stackPointer);
+    ++m_programCounter;
+}
+
+void Cpu::plp()
+{
+    m_status.all = m_memory.read(++m_stackPointer);
+    ++m_programCounter;
+}
+
 void Cpu::rol(const AddrMode mode)
 {
-    uint8_t *target = &m_accumulator;
+    uint16_t addr = 0;
+    uint8_t tmp = m_accumulator;
     if(AddrMode::IMP != mode) {
-        target = &m_sramPtr[computeAddress(mode)];
+        addr = computeAddress(mode);
+        tmp = m_memory.read(addr);;
     } else {
         ++m_programCounter;
     }
     
-    bool newCarry = (*target & 0x80) > 0;
-    *target <<= 1;
-    *target += m_status.bits.carryFlag;
-    m_status.bits.negativeFlag = (*target & 0x80) > 0;
-    m_status.bits.zeroFlag = (0 == *target);
+    bool newCarry = (tmp & 0x80) > 0;
+    tmp <<= 1;
+    tmp += m_status.bits.carryFlag;
+    m_status.bits.negativeFlag = (tmp & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == tmp);
     m_status.bits.carryFlag = newCarry;
+    if(AddrMode::IMP != mode) {
+        m_memory.write(addr, tmp);
+    } else {
+        m_accumulator = tmp;
+    }
 }
 
 void Cpu::ror(const AddrMode mode)
 {
-    uint8_t *target = &m_accumulator;
+    uint16_t addr = 0;
+    uint8_t tmp = m_accumulator;
     if(AddrMode::IMP != mode) {
-        target = &m_sramPtr[computeAddress(mode)];
+        addr = computeAddress(mode);
+        tmp = m_memory.read(addr);;
     } else {
         ++m_programCounter;
     }
     
-    bool newCarry = (*target & 0x01) > 0;
-    *target >>= 1;
-    *target += m_status.bits.carryFlag ? 0x80 : 0x00;
-    m_status.bits.negativeFlag = (*target & 0x80) > 0;
-    m_status.bits.zeroFlag = (0 == *target);
+    bool newCarry = (tmp & 0x01) > 0;
+    tmp >>= 1;
+    tmp += m_status.bits.carryFlag ? 0x80 : 0x00;
+    m_status.bits.negativeFlag = (tmp & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == tmp);
     m_status.bits.carryFlag = newCarry;
+    if(AddrMode::IMP != mode) {
+        m_memory.write(addr, tmp);
+    } else {
+        m_accumulator = tmp;
+    }
 }
 
 void Cpu::rts()
 {
     m_stackPointer += 2;
-    m_programCounter = readWord(m_stackPointer - 1) + 1;
+    printf("SP: 0x%04X, PC: 0x%04X\n",
+            m_stackPointer,
+            m_memory.readWord(m_stackPointer - 1) + 1);
+    printf("SP: 0x%04X, PC: 0x%04X\n",
+            m_stackPointer + 1,
+            m_memory.readWord(m_stackPointer) + 1);
+    m_programCounter = m_memory.readWord(m_stackPointer - 1) + 1;
+}
+
+void Cpu::sbc(const AddrMode mode)
+{
+    uint8_t op = m_memory.read(computeAddress(mode));
+    uint16_t result = ((uint16_t)m_accumulator) - op - m_status.bits.carryFlag;
+    m_status.bits.carryFlag = (result > 0xFF);
+    m_accumulator = result & 0xFF;
 }
 
 void Cpu::sec()
@@ -464,7 +556,7 @@ void Cpu::sei()
 
 void Cpu::str(const uint8_t &r, const AddrMode mode)
 {
-    m_sramPtr[computeAddress(mode)] = r;
+    m_memory.write(computeAddress(mode), r);
 }
 
 void Cpu::tsd(const uint8_t &src, uint8_t &dst)
@@ -489,29 +581,17 @@ void Cpu::txs()
 
 void Cpu::init()
 {
-    m_sramPtr[0] = 0xFF;
-    m_sramPtr[1] = 0x07;
-    m_programCounter = readWord(0xFFFC);
+    m_memory.write(0x0000, 0xFF);
+    m_memory.write(0x0001, 0x07);
+    m_programCounter = m_memory.readWord(0xFFFC);
     m_stackPointer = 0x1FF;
-}
-
-uint16_t Cpu::readWord(uint16_t addr)
-{
-    uint16_t word = m_sramPtr[addr + 1] << 8;
-    word |= m_sramPtr[addr];
-    return word;
-}
-
-void Cpu::writeWord(uint16_t word, uint16_t addr)
-{
-    m_sramPtr[addr] = word & 0xFF;
-    m_sramPtr[addr + 1] = (word >> 8) & 0xFF;
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)
 {
     ++m_programCounter;
     uint16_t addr = 0;
+    uint16_t ptr = 0;
     switch(mode) {
         case AddrMode::IMP: // do nothing here
             break;
@@ -519,64 +599,60 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
             addr = m_programCounter++;
             break;
         case AddrMode::REL:
-            addr = m_programCounter + ((int8_t)m_sramPtr[m_programCounter]) + 1;
+            addr = m_programCounter + ((int8_t)m_memory.read(m_programCounter)) + 1;
             ++m_programCounter;
             break;
         case AddrMode::ZP:
-            addr = m_sramPtr[m_programCounter++];
+            addr = m_memory.read(m_programCounter++);
             break;
         case AddrMode::ZPX:
-            addr = m_sramPtr[m_programCounter++] + m_xIndex;
+            addr = m_memory.read(m_programCounter++) + m_xIndex;
             break;
         case AddrMode::ZPY:
-            addr = m_sramPtr[m_programCounter++] + m_yIndex;
+            addr = m_memory.read(m_programCounter++) + m_yIndex;
             break;
         case AddrMode::ABS:
-            addr = readWord(m_programCounter);
+            addr = m_memory.readWord(m_programCounter);
             m_programCounter += 2;
             break;
         case AddrMode::ABX:
-            addr = readWord(m_programCounter) + m_xIndex;
+            addr = m_memory.readWord(m_programCounter) + m_xIndex;
             m_programCounter += 2;
             break;
         case AddrMode::ABY:
-            addr = readWord(m_programCounter) + m_yIndex;
+            addr = m_memory.readWord(m_programCounter) + m_yIndex;
             m_programCounter += 2;
             break;
         case AddrMode::IND:
-            addr = m_sramPtr[readWord(m_programCounter)];
-            m_programCounter++;
+            ptr = m_memory.readWord(m_programCounter);
+            addr = m_memory.readWord(ptr);
+            printf("ADDR 0x%04X read from 0x%04X\n",
+                    addr,
+                    ptr);
+            m_programCounter += 2;
             break;
         case AddrMode::IZX:
-            addr = m_sramPtr[m_programCounter++ + m_xIndex];
+            addr = m_memory.readWord(m_memory.read(m_programCounter)) + m_xIndex;
+            m_programCounter++;
             break;
         case AddrMode::IZY:
-            addr = m_sramPtr[m_programCounter++ + m_yIndex];
+            addr = m_memory.readWord(m_memory.read(m_programCounter)) + m_yIndex;
+            m_programCounter++;
             break;
     };
 
     return addr;
 }
 
-Cpu::Cpu()
-    : m_sramPtr(new uint8_t[65536])
-    , m_ownsSramPtr(true)
-{
-    init();
-}
-
-Cpu::Cpu(uint8_t *sramPtr)
-    : m_sramPtr(sramPtr)
-    , m_ownsSramPtr(false)
+Cpu::Cpu(uint8_t *romPtr)
+    : m_memory(romPtr)
 {
     init();
 }
 
 Cpu::~Cpu()
 {
-    if(m_ownsSramPtr) {
-        delete[] m_sramPtr;
-    }
+
 }
 
 } // namespace MOS6510
