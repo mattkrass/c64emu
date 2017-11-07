@@ -6,6 +6,20 @@
 #include <stdio.h>
 
 namespace MOS6510 {
+
+const char cgromLookup[] =
+    { '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+      'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
+      'X', 'Y', 'Z', '[', '~', ']', '^', '<', ' ', '!', '"', '#',
+      '$', '%', '&', 0x27,'(', ')', '*', '+', ',', '-', '.', '/',
+      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';',
+      '<', '=', '>', '?', '-', '~', '~', '~', '~', '~', '~', '~',
+      '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
+      '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
+      '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
+      '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
+      '~', '~', '~', '~', '~', '~', '~', '~' };
+
 void Cpu::execute()
 {
     uint16_t programCounter = m_programCounter;
@@ -283,6 +297,19 @@ void Cpu::execute()
             m_stackPointer);
             
     assert(programCounter != m_programCounter); // if these are equal we did nothing
+    if(m_programCounter == 0xE5CD) { // when we hit the keyboard loop, bail out for now
+        printf("Screen dump");
+        for(int i = 0x0000; i < 0x03E8; ++i) {
+            uint8_t data = m_memory.read(i + 0x0400);
+            char c = cgromLookup[(data & 0x7F)];
+            if(0 == (i % 40)) {
+                printf(":\n0x%04X ", (i + 0x0400));
+            }
+            printf("%c", c);
+        }
+
+        assert(0); // <-- crash out
+    }
 }
 
 void Cpu::adc(const AddrMode mode)
