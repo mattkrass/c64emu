@@ -1,5 +1,7 @@
 #include <string>
 #include <iostream>
+#include <sstream>
+#include <vector>
 #include <iomanip>
 #include <assert.h>
 #include "mos6510.h"
@@ -20,10 +22,134 @@ const char cgromLookup[] =
       '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
       '~', '~', '~', '~', '~', '~', '~', '~' };
 
+void Cpu::debugPrompt()
+{
+    bool promptActive = true;
+    while (promptActive) {
+        std::cout << "dbg> ";
+        std::string line;
+        std::string token;
+        std::getline(std::cin, line);
+        std::stringstream ss(line);
+        std::vector<std::string> args;
+        while(std::getline(ss, token, ' ')) {
+            if(0 < token.length()) {
+                args.push_back(token);
+            }
+        }
+
+        if(0 < args.size()) {
+            if("exit" == args[0]) {
+                exit(0); // shut it down!
+            } else if("run" == args[0]) {
+                return;
+            }
+
+            std::map<std::string, Cpu::cmdFunc>::iterator it = m_cmdMap.find(args[0]);
+            if(m_cmdMap.cend() != it) {
+                cmdFunc fn = it->second;
+                promptActive = (this->*fn)(args);
+            } else {
+                std::cout << "Invalid command." << std::endl;
+            }
+        }
+    }
+}
+
+static uint16_t parseString(const std::string& num)
+{
+    uint16_t result = 0;
+    const char *str = num.c_str();
+    std::stringstream ss(num);
+    if(str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) { // hex
+        ss >> std::hex >> result;
+    } else { // decimal or borken
+        ss >> result;
+    }
+
+    return result;
+}
+
+bool Cpu::dbgRead(const std::vector<std::string>& args)
+{
+    uint16_t addr = 0;
+    uint16_t numBytes = 1;
+    if(2 > args.size()) {
+        std::cout << "read <address> [number of bytes]" << std::endl;
+    } else if (2 == args.size()) {
+        addr = parseString(args[1]);
+    } else {
+        addr = parseString(args[1]);
+        numBytes = parseString(args[2]);
+    }
+
+    for(int idx = 0; idx < numBytes; ++idx) {
+        if(0 == idx % 24)  {
+            if (idx) {
+                printf("\n");
+            }
+            printf("0x%04X  ", addr + idx);
+        }
+        printf(" %02X", m_memory.read(addr + idx));
+    }
+
+    printf("\n");
+    return true; // stay in debug
+}
+
+bool Cpu::dbgSdmp(const std::vector<std::string>& args)
+{
+    printf("Screen dump");
+    for(int i = 0x0000; i < 0x03E8; ++i) {
+        uint8_t data = m_memory.read(i + 0x0400);
+        char c = cgromLookup[(data & 0x7F)];
+        if(0 == (i % 40)) {
+            printf(":\n0x%04X ", (i + 0x0400));
+        }
+        printf("%c", c);
+    }
+
+    printf(":\n");
+    return true; // stay in debug
+}
+
+bool Cpu::dbgStep(const std::vector<std::string>& args)
+{
+    uint16_t stepCount = 1;
+    if(1 > args.size()) {
+        stepCount = parseString(args[1]);
+    }
+
+    m_stepCount = stepCount;
+    m_stepping = true;
+
+    return false;
+}
+
 void Cpu::execute()
 {
     uint16_t programCounter = m_programCounter;
     uint8_t opcode = m_memory.read(programCounter);
+
+    if(m_debugMode) {
+        if(m_stepCount) {
+            --m_stepCount;
+        }
+
+        if(m_breakpointSet.end() != m_breakpointSet.find(programCounter)) {
+            printf(">>>>>>>>>> Hit breakpoint at 0x%04X <<<<<<<<<<\n", programCounter);
+            debugPrompt();
+        } else if(m_stepping) {
+            if(!m_stepCount) {
+                printf(">>>>>>>>>> Finished step count at 0x%04X <<<<<<<<<<\n", programCounter);
+                debugPrompt();
+            }
+        }
+
+        if(m_stepping && !m_stepCount) {
+            m_stepping = false; // we clear this late in case of coincident breakpoint and step count end
+        }
+    }
 
     std::string ocs = "";
     switch (opcode) {
@@ -49,11 +175,11 @@ void Cpu::execute()
         case AND_zp:  ocs = "AND_zp";  andi(AddrMode::ZP);                break;
         case AND_zpx: ocs = "AND_zpx"; andi(AddrMode::ZPX);               break;
         case ARR_imm: ocs = "ARR_imm"; break;
-        case ASL: ocs = "ASL"; break;
-        case ASL_abs: ocs = "ASL_abs"; break;
-        case ASL_abx: ocs = "ASL_abx"; break;
-        case ASL_zp: ocs = "ASL_zp"; break;
-        case ASL_zpx: ocs = "ASL_zpx"; break;
+        case ASL:     ocs = "ASL";     asl(AddrMode::IMP);                break;
+        case ASL_abs: ocs = "ASL_abs"; asl(AddrMode::ABS);                break;
+        case ASL_abx: ocs = "ASL_abx"; asl(AddrMode::ABX);                break;
+        case ASL_zp:  ocs = "ASL_zp";  asl(AddrMode::ZP);                 break;
+        case ASL_zpx: ocs = "ASL_zpx"; asl(AddrMode::ZPX);                break;
         case AXS_imm: ocs = "AXS_imm"; break;
         case BCC_rel: ocs = "BCC_rel"; br(m_status.bits.carryFlag, 0);    break;
         case BCS_rel: ocs = "BCS_rel"; br(m_status.bits.carryFlag, 1);    break;
@@ -297,19 +423,6 @@ void Cpu::execute()
             m_stackPointer);
             
     assert(programCounter != m_programCounter); // if these are equal we did nothing
-    if(m_programCounter == 0xE5CD) { // when we hit the keyboard loop, bail out for now
-        printf("Screen dump");
-        for(int i = 0x0000; i < 0x03E8; ++i) {
-            uint8_t data = m_memory.read(i + 0x0400);
-            char c = cgromLookup[(data & 0x7F)];
-            if(0 == (i % 40)) {
-                printf(":\n0x%04X ", (i + 0x0400));
-            }
-            printf("%c", c);
-        }
-
-        assert(0); // <-- crash out
-    }
 }
 
 void Cpu::adc(const AddrMode mode)
@@ -318,6 +431,8 @@ void Cpu::adc(const AddrMode mode)
     uint16_t result = ((uint16_t)m_accumulator) + op + m_status.bits.carryFlag;
     m_status.bits.carryFlag = (result > 0xFF);
     m_accumulator = result & 0xFF;
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::andi(const AddrMode mode)
@@ -325,6 +440,29 @@ void Cpu::andi(const AddrMode mode)
     m_accumulator &= m_memory.read(computeAddress(mode));
     m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
     m_status.bits.zeroFlag = (0 == m_accumulator);
+}
+
+void Cpu::asl(const AddrMode mode)
+{
+    uint16_t addr = 0;
+    uint8_t tmp = m_accumulator;
+    if(AddrMode::IMP != mode) {
+        addr = computeAddress(mode);
+        tmp = m_memory.read(addr);;
+    } else {
+        ++m_programCounter;
+    }
+    
+    bool newCarry = (tmp & 0x80) > 0;
+    tmp <<= 1;
+    m_status.bits.negativeFlag = (tmp & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == tmp);
+    m_status.bits.carryFlag = newCarry;
+    if(AddrMode::IMP != mode) {
+        m_memory.write(addr, tmp);
+    } else {
+        m_accumulator = tmp;
+    }
 }
 
 void Cpu::bit(const AddrMode mode)
@@ -557,10 +695,19 @@ void Cpu::rts()
 
 void Cpu::sbc(const AddrMode mode)
 {
-    uint8_t op = m_memory.read(computeAddress(mode));
-    uint16_t result = ((uint16_t)m_accumulator) - op - m_status.bits.carryFlag;
-    m_status.bits.carryFlag = (result > 0xFF);
-    m_accumulator = result & 0xFF;
+    uint16_t op0 = m_memory.read(computeAddress(mode));
+    uint16_t op1 = m_accumulator;
+    uint16_t tmp = 0;
+
+    op0 = (~op0 & 0xFF) + m_status.bits.carryFlag;
+    tmp = op0 + op1;
+
+    m_status.bits.carryFlag = ((tmp & 0x100) == 0x100);
+    m_status.bits.overflowFlag = (((op0 ^ tmp) & (op1 ^ tmp) & 0x80) == 0x80);
+
+    m_accumulator = tmp & 0xFF;
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::sec()
@@ -612,6 +759,10 @@ void Cpu::init()
     m_memory.write(0x0001, 0x07);
     m_programCounter = m_memory.readWord(0xFFFC);
     m_stackPointer = 0x1FF;
+
+    m_cmdMap["read"] = &Cpu::dbgRead;
+    m_cmdMap["sdmp"] = &Cpu::dbgSdmp;
+    m_cmdMap["step"] = &Cpu::dbgStep;
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)
@@ -673,6 +824,8 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
 
 Cpu::Cpu(uint8_t *romPtr)
     : m_memory(romPtr)
+    , m_debugMode(false)
+    , m_stepping(false)
 {
     init();
 }
@@ -682,4 +835,36 @@ Cpu::~Cpu()
 
 }
 
+int Cpu::addBreakpoint(uint16_t bpAddr)
+{
+    m_debugMode = true;
+    m_breakpointSet.insert(bpAddr);
+    return m_breakpointSet.size();
+}
+
+int Cpu::removeBreakpoint(uint16_t bpAddr)
+{
+    m_breakpointSet.erase(bpAddr);
+    return m_breakpointSet.size();
+}
+
+void Cpu::setDebugState(bool mode)
+{
+    m_debugMode = mode;
+}
+
 } // namespace MOS6510
+
+//      if(m_programCounter == 0xE5CD) { // when we hit the keyboard loop, bail out for now
+//          printf("Screen dump");
+//          for(int i = 0x0000; i < 0x03E8; ++i) {
+//              uint8_t data = m_memory.read(i + 0x0400);
+//              char c = cgromLookup[(data & 0x7F)];
+//              if(0 == (i % 40)) {
+//                  printf(":\n0x%04X ", (i + 0x0400));
+//              }
+//              printf("%c", c);
+//          }
+//
+//          assert(0); // <-- crash out
+//      }

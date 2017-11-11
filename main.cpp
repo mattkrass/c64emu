@@ -33,7 +33,9 @@ int main(int argc, char **argv)
     printf("ROM[0xA000] = 0x%02X\n", rom[0]);
     printf("ROM[0xA001] = 0x%02X\n", rom[1]);
     MOS6510::Cpu mos6510(rom);
-    for(int i = 0; i < 640000; ++i) {
+    mos6510.addBreakpoint(0xE5CD);
+    mos6510.addBreakpoint(0xBDCD);
+    while(1) {
         mos6510.execute();
     }
 

@@ -1,6 +1,8 @@
 #ifndef INCLUDED_MOS6510_H
 #define INCLUDED_MOS6510_H
 
+#include <map>
+#include <set>
 #include "memorycontroller.h"
 
 namespace MOS6510 {
@@ -146,17 +148,27 @@ enum CpuState {
 
 class Cpu {
 private:
-    uint16_t            m_programCounter;
-    uint16_t            m_stackPointer;
-    uint8_t             m_accumulator;
-    uint8_t             m_xIndex;
-    uint8_t             m_yIndex;
-    StatusRegister      m_status;
-    MemoryController    m_memory;
+    uint16_t                        m_programCounter;
+    uint16_t                        m_stackPointer;
+    uint8_t                         m_accumulator;
+    uint8_t                         m_xIndex;
+    uint8_t                         m_yIndex;
+    StatusRegister                  m_status;
+    MemoryController                m_memory;
+
+    // debug state
+    typedef bool (MOS6510::Cpu::* cmdFunc)(const std::vector<std::string>&);
+    bool                            m_debugMode;
+    std::set<uint16_t>              m_breakpointSet;
+    std::map<std::string, cmdFunc>  m_cmdMap;
+    uint16_t                        m_stepCount;
+    bool                            m_stepping;
+
 
     // internal operations 
     void adc(const AddrMode mode);
     void andi(const AddrMode mode);
+    void asl(const AddrMode mode);
     void bit(const AddrMode mode);
     void br(uint8_t flag, uint8_t condition);
     void clc();
@@ -195,10 +207,20 @@ private:
     void init();
     uint16_t computeAddress(const AddrMode mode);
 
+    // debug functions
+    void debugPrompt();
+    bool dbgRead(const std::vector<std::string>& args);
+    bool dbgSdmp(const std::vector<std::string>& args);
+    bool dbgStep(const std::vector<std::string>& args);
+
 public:
     Cpu(const Cpu& rhs);
     Cpu(uint8_t *romPtr);
     ~Cpu();
+
+    int addBreakpoint(uint16_t bpAddr);
+    int removeBreakpoint(uint16_t bpAddr);
+    void setDebugState(bool mode);
 
     void execute();
 };
