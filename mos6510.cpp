@@ -75,7 +75,7 @@ bool Cpu::dbgRead(const std::vector<std::string>& args)
     uint16_t addr = 0;
     uint16_t numBytes = 1;
     if(2 > args.size()) {
-        std::cout << "read <address> [number of bytes]" << std::endl;
+        std::cout << args[0] << " <address> [number of bytes]" << std::endl;
     } else if (2 == args.size()) {
         addr = parseString(args[1]);
     } else {
@@ -94,6 +94,23 @@ bool Cpu::dbgRead(const std::vector<std::string>& args)
     }
 
     printf("\n");
+    return true; // stay in debug
+}
+
+bool Cpu::dbgWrit(const std::vector<std::string>& args)
+{
+    uint16_t addr = 0;
+    if(2 > args.size()) {
+        std::cout << args[0] << " <address> [list of bytes to write]" << std::endl;
+        return true; // drop back to the debug menu
+    }
+
+    addr = parseString(args[1]);
+    for(int idx = 2; idx < args.size(); ++idx) {
+        printf("A: 0x%04X B: 0x%02X\n", addr, parseString(args[idx]));
+        m_memory.write(addr++, parseString(args[idx]));
+    }
+
     return true; // stay in debug
 }
 
@@ -126,17 +143,58 @@ bool Cpu::dbgStep(const std::vector<std::string>& args)
     return false;
 }
 
-void Cpu::execute()
+bool Cpu::dbgBrka(const std::vector<std::string>& args)
+{
+    uint16_t addr = 0;
+    if(2 > args.size()) {
+        std::cout << "brka <address>" << std::endl;
+    } else {
+        addr = parseString(args[1]);
+    }
+
+    addBreakpoint(addr);
+
+    return true; // stay in debug
+}
+
+bool Cpu::dbgBrkd(const std::vector<std::string>& args)
+{
+    uint16_t addr = 0;
+    if(2 > args.size()) {
+        std::cout << "brkd <address>" << std::endl;
+    } else {
+        addr = parseString(args[1]);
+    }
+
+    removeBreakpoint(addr);
+
+    return true; // stay in debug
+}
+
+bool Cpu::dbgLsbp(const std::vector<std::string>& args)
+{
+    std::set<uint16_t>::const_iterator it = m_breakpointSet.cbegin();
+    for(int idx = 0; it != m_breakpointSet.cend(); ++it, ++idx) {
+        printf("%d: 0x%04X\n", idx, *it);
+    }
+
+    return true; // stay in debug
+}
+
+void Cpu::execute(bool debugBreak)
 {
     uint16_t programCounter = m_programCounter;
     uint8_t opcode = m_memory.read(programCounter);
 
-    if(m_debugMode) {
+    if(m_debugMode || debugBreak) {
         if(m_stepCount) {
             --m_stepCount;
         }
 
-        if(m_breakpointSet.end() != m_breakpointSet.find(programCounter)) {
+        if(debugBreak) { 
+            printf(">>>>>>>>>> CPU paused at 0x%04X <<<<<<<<<<\n", programCounter);
+            debugPrompt();
+        } else if(m_breakpointSet.end() != m_breakpointSet.find(programCounter)) {
             printf(">>>>>>>>>> Hit breakpoint at 0x%04X <<<<<<<<<<\n", programCounter);
             debugPrompt();
         } else if(m_stepping) {
@@ -761,8 +819,16 @@ void Cpu::init()
     m_stackPointer = 0x1FF;
 
     m_cmdMap["read"] = &Cpu::dbgRead;
+    m_cmdMap["rd"]   = &Cpu::dbgRead;
+    m_cmdMap["r"]    = &Cpu::dbgRead;
+    m_cmdMap["writ"] = &Cpu::dbgWrit;
+    m_cmdMap["wr"]   = &Cpu::dbgWrit;
+    m_cmdMap["w"]    = &Cpu::dbgWrit;
     m_cmdMap["sdmp"] = &Cpu::dbgSdmp;
     m_cmdMap["step"] = &Cpu::dbgStep;
+    m_cmdMap["brka"] = &Cpu::dbgBrka;
+    m_cmdMap["brkd"] = &Cpu::dbgBrkd;
+    m_cmdMap["lsbp"] = &Cpu::dbgLsbp;
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)

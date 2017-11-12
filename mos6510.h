@@ -210,8 +210,12 @@ private:
     // debug functions
     void debugPrompt();
     bool dbgRead(const std::vector<std::string>& args);
+    bool dbgWrit(const std::vector<std::string>& args);
     bool dbgSdmp(const std::vector<std::string>& args);
     bool dbgStep(const std::vector<std::string>& args);
+    bool dbgBrka(const std::vector<std::string>& args);
+    bool dbgBrkd(const std::vector<std::string>& args);
+    bool dbgLsbp(const std::vector<std::string>& args);
 
 public:
     Cpu(const Cpu& rhs);
@@ -222,7 +226,7 @@ public:
     int removeBreakpoint(uint16_t bpAddr);
     void setDebugState(bool mode);
 
-    void execute();
+    void execute(bool debugBreak);
 };
 }
 #endif // INCLUDED_MOS6510

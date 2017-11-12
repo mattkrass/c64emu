@@ -1,6 +1,13 @@
 #include <iostream>
 #include <fstream>
+#include <signal.h>
 #include "mos6510.h"
+
+bool g_setDebug = false;
+void sig_callback(int signum)
+{
+    g_setDebug = true;
+}
 
 int main(int argc, char **argv)
 {
@@ -22,7 +29,7 @@ int main(int argc, char **argv)
             std::ifstream::binary);
 
     uint8_t rom[16384];
-    romFile.read((char *)rom, 0x4000); // Read BASIC in to RAM
+    romFile.read((char *)rom, 0x4000); // Read BASIC/KERNAL in to buffer
     if(0x4000 != romFile.gcount()) {
         std::cerr << "Failed to read full ROM! Only got "
                   << romFile.gcount()
@@ -32,11 +39,16 @@ int main(int argc, char **argv)
 
     printf("ROM[0xA000] = 0x%02X\n", rom[0]);
     printf("ROM[0xA001] = 0x%02X\n", rom[1]);
+    signal(SIGTSTP, sig_callback);
+
     MOS6510::Cpu mos6510(rom);
-    mos6510.addBreakpoint(0xE5CD);
-    mos6510.addBreakpoint(0xBDCD);
+    bool setDebug = true;
     while(1) {
-        mos6510.execute();
+        mos6510.execute(setDebug);
+        if(setDebug) {
+            g_setDebug = false;
+        }
+        setDebug = g_setDebug;
     }
 
     return 0;
