@@ -1,17 +1,17 @@
 [
 {
   "directory": "/Users/matt/Projects/c64emu",
-  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++      -std=gnu++14 -o CMakeFiles/test.tsk.dir/main.cpp.o -c /Users/matt/Projects/c64emu/main.cpp",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++   -I/Users/matt/Projects/libsdl-dev/include/SDL2    -std=gnu++14 -o CMakeFiles/test.tsk.dir/main.cpp.o -c /Users/matt/Projects/c64emu/main.cpp",
   "file": "/Users/matt/Projects/c64emu/main.cpp"
 },
 {
   "directory": "/Users/matt/Projects/c64emu",
-  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++      -std=gnu++14 -o CMakeFiles/test.tsk.dir/memorycontroller.cpp.o -c /Users/matt/Projects/c64emu/memorycontroller.cpp",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++   -I/Users/matt/Projects/libsdl-dev/include/SDL2    -std=gnu++14 -o CMakeFiles/test.tsk.dir/memorycontroller.cpp.o -c /Users/matt/Projects/c64emu/memorycontroller.cpp",
   "file": "/Users/matt/Projects/c64emu/memorycontroller.cpp"
 },
 {
   "directory": "/Users/matt/Projects/c64emu",
-  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++      -std=gnu++14 -o CMakeFiles/test.tsk.dir/mos6510.cpp.o -c /Users/matt/Projects/c64emu/mos6510.cpp",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++   -I/Users/matt/Projects/libsdl-dev/include/SDL2    -std=gnu++14 -o CMakeFiles/test.tsk.dir/mos6510.cpp.o -c /Users/matt/Projects/c64emu/mos6510.cpp",
   "file": "/Users/matt/Projects/c64emu/mos6510.cpp"
 }
 ]

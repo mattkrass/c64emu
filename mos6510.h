@@ -6,6 +6,11 @@
 #include "memorycontroller.h"
 
 namespace MOS6510 {
+const int SCREEN_WIDTH  = 1280;
+const int SCREEN_HEIGHT = 800;
+const uint32_t BG_COLOR = 0xFF9083EC;
+const uint32_t FG_COLOR = 0xFFAAFFEE;
+
 struct StatusRegister {
     union {
         struct {
@@ -155,6 +160,7 @@ private:
     uint8_t                         m_yIndex;
     StatusRegister                  m_status;
     MemoryController                m_memory;
+    uint16_t                        m_videoTimer;
 
     // debug state
     typedef bool (MOS6510::Cpu::* cmdFunc)(const std::vector<std::string>&);
@@ -163,6 +169,9 @@ private:
     std::map<std::string, cmdFunc>  m_cmdMap;
     uint16_t                        m_stepCount;
     bool                            m_stepping;
+    uint8_t*                        m_cgromPtr;
+    SDL_Window *                    m_window;
+    SDL_Surface *                   m_surface;
 
 
     // internal operations 
@@ -206,6 +215,7 @@ private:
     // utility
     void init();
     uint16_t computeAddress(const AddrMode mode);
+    void redrawScreen();
 
     // debug functions
     void debugPrompt();
@@ -219,7 +229,7 @@ private:
 
 public:
     Cpu(const Cpu& rhs);
-    Cpu(uint8_t *romPtr);
+    Cpu(uint8_t *romPtr, uint8_t *cgromPtr);
     ~Cpu();
 
     int addBreakpoint(uint16_t bpAddr);

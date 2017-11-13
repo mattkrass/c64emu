@@ -4,8 +4,9 @@
 #include <vector>
 #include <iomanip>
 #include <assert.h>
-#include "mos6510.h"
 #include <stdio.h>
+#include <SDL.h>
+#include "mos6510.h"
 
 namespace MOS6510 {
 
@@ -24,6 +25,7 @@ const char cgromLookup[] =
 
 void Cpu::debugPrompt()
 {
+    redrawScreen();
     bool promptActive = true;
     while (promptActive) {
         std::cout << "dbg> ";
@@ -180,6 +182,7 @@ bool Cpu::dbgLsbp(const std::vector<std::string>& args)
 
     return true; // stay in debug
 }
+
 
 void Cpu::execute(bool debugBreak)
 {
@@ -481,6 +484,13 @@ void Cpu::execute(bool debugBreak)
             m_stackPointer);
             
     assert(programCounter != m_programCounter); // if these are equal we did nothing
+    ++m_videoTimer;
+    if(17050 < m_videoTimer) { // roughly the ratio of system clock to framerate
+        m_videoTimer = 0;
+        if(m_memory.resetScreenDirty()) { // need to redraw
+            redrawScreen();
+        }
+    }
 }
 
 void Cpu::adc(const AddrMode mode)
@@ -682,6 +692,8 @@ void Cpu::php()
 void Cpu::pla()
 {
     m_accumulator = m_memory.read(++m_stackPointer);
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == m_accumulator);
     ++m_programCounter;
 }
 
@@ -742,12 +754,6 @@ void Cpu::ror(const AddrMode mode)
 void Cpu::rts()
 {
     m_stackPointer += 2;
-    printf("SP: 0x%04X, PC: 0x%04X\n",
-            m_stackPointer,
-            m_memory.readWord(m_stackPointer - 1) + 1);
-    printf("SP: 0x%04X, PC: 0x%04X\n",
-            m_stackPointer + 1,
-            m_memory.readWord(m_stackPointer) + 1);
     m_programCounter = m_memory.readWord(m_stackPointer - 1) + 1;
 }
 
@@ -829,6 +835,15 @@ void Cpu::init()
     m_cmdMap["brka"] = &Cpu::dbgBrka;
     m_cmdMap["brkd"] = &Cpu::dbgBrkd;
     m_cmdMap["lsbp"] = &Cpu::dbgLsbp;
+
+    m_window = SDL_CreateWindow("C64",
+            SDL_WINDOWPOS_UNDEFINED,
+            SDL_WINDOWPOS_UNDEFINED,
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT,
+            SDL_WINDOW_SHOWN);
+    m_surface = SDL_CreateRGBSurface(0, 320, 200, 32, 0, 0, 0, 0);
+    SDL_FillRect(m_surface, 0, BG_COLOR);
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)
@@ -870,9 +885,6 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
         case AddrMode::IND:
             ptr = m_memory.readWord(m_programCounter);
             addr = m_memory.readWord(ptr);
-            printf("ADDR 0x%04X read from 0x%04X\n",
-                    addr,
-                    ptr);
             m_programCounter += 2;
             break;
         case AddrMode::IZX:
@@ -888,17 +900,39 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
     return addr;
 }
 
-Cpu::Cpu(uint8_t *romPtr)
+void Cpu::redrawScreen()
+{
+    uint32_t* pixelPtr = ((uint32_t*)m_surface->pixels);
+    for(int i = 0x0000; i < 0x03E8; ++i) {
+        uint8_t data = m_memory.read(i + 0x0400);
+        for(int pixelLine = 0; pixelLine < 8; ++pixelLine) {
+            uint8_t rowBits = m_cgromPtr[(data * 8) + pixelLine];
+            int offset = (320 * pixelLine) + ((i % 40) * 8) + ((i / 40) * 2560);
+            uint8_t mask = 0x80;
+            for(int bit = 0; bit < 8; ++bit) {
+                pixelPtr[offset + bit] = (rowBits & mask) ? FG_COLOR : BG_COLOR;
+                mask >>= 1;
+            }
+        }
+    }
+
+    SDL_Rect tgt; tgt.x = 0; tgt.y = 0; tgt.w = SCREEN_WIDTH, tgt.h = SCREEN_HEIGHT;
+    SDL_BlitScaled(m_surface, 0, SDL_GetWindowSurface(m_window), &tgt);
+    SDL_UpdateWindowSurface(m_window);
+}
+
+Cpu::Cpu(uint8_t *romPtr, uint8_t *cgromPtr)
     : m_memory(romPtr)
     , m_debugMode(false)
     , m_stepping(false)
+    , m_cgromPtr(cgromPtr)
 {
     init();
 }
 
 Cpu::~Cpu()
 {
-
+    SDL_DestroyWindow(m_window);
 }
 
 int Cpu::addBreakpoint(uint16_t bpAddr)
@@ -920,17 +954,3 @@ void Cpu::setDebugState(bool mode)
 }
 
 } // namespace MOS6510
-
-//      if(m_programCounter == 0xE5CD) { // when we hit the keyboard loop, bail out for now
-//          printf("Screen dump");
-//          for(int i = 0x0000; i < 0x03E8; ++i) {
-//              uint8_t data = m_memory.read(i + 0x0400);
-//              char c = cgromLookup[(data & 0x7F)];
-//              if(0 == (i % 40)) {
-//                  printf(":\n0x%04X ", (i + 0x0400));
-//              }
-//              printf("%c", c);
-//          }
-//
-//          assert(0); // <-- crash out
-//      }

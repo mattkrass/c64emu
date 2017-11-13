@@ -11,6 +11,8 @@ MemoryController::MemoryController(uint8_t *rom)
     for(size_t i = 0; i < 65536; ++i) {
         m_sram[i] = 1;
     }
+
+    m_screenDirty = false;
 }
 
 bool MemoryController::checkMask(uint8_t mask, uint8_t value)
@@ -77,6 +79,10 @@ void MemoryController::write(uint16_t addr, uint8_t data)
             m_sram[addr] = data;
         }
     } else {
+        if(page > 3 && page <= 8) { // video memory, mark it dirty
+            m_screenDirty = true;
+        }
+
         m_sram[addr] = data;
     }
 }
@@ -85,6 +91,13 @@ void MemoryController::writeWord(uint16_t addr, uint16_t word)
 {
     write(addr,      (word       & 0xFF));
     write(addr + 1, ((word >> 8) & 0xFF));
+}
+
+bool MemoryController::resetScreenDirty()
+{
+    bool tmp = m_screenDirty;
+    m_screenDirty = false;
+    return tmp;
 }
 
 } // namespace MOS6510
