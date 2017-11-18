@@ -3,6 +3,7 @@
 
 #include <map>
 #include <set>
+#include <vector>
 #include "memorycontroller.h"
 
 namespace MOS6510 {
