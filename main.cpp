@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <signal.h>
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include "mos6510.h"
 
 bool g_setDebug = false;
@@ -64,13 +64,16 @@ int main(int argc, char **argv)
     signal(SIGTSTP, sig_callback);
 
     MOS6510::Cpu mos6510(rom, cgrom);
-    bool setDebug = true;
+    bool setDebug = false;
     while(1) {
         mos6510.execute(setDebug);
         if(setDebug) {
             g_setDebug = false;
         }
         setDebug = g_setDebug;
+        SDL_Event evt;
+        while(SDL_PollEvent(&evt)) {
+        }
     }
 
     SDL_Quit();

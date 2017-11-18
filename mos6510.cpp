@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <assert.h>
 #include <stdio.h>
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include "mos6510.h"
 
 namespace MOS6510 {
@@ -183,9 +183,24 @@ bool Cpu::dbgLsbp(const std::vector<std::string>& args)
     return true; // stay in debug
 }
 
+bool Cpu::dbgSeti(const std::vector<std::string>& args)
+{
+    m_pendingIrq = true;
+    return true; // stay in debug
+}
+
+bool Cpu::dbgClri(const std::vector<std::string>& args)
+{
+    m_pendingIrq = false;
+    return true; // stay in debug
+}
 
 void Cpu::execute(bool debugBreak)
 {
+    if (0 == m_status.bits.interruptDisableFlag && m_pendingIrq) {
+        isr();
+    }
+
     uint16_t programCounter = m_programCounter;
     uint8_t opcode = m_memory.read(programCounter);
 
@@ -413,9 +428,9 @@ void Cpu::execute(bool debugBreak)
         case RRA_aby: ocs = "RRA_aby"; break;
         case RRA_izx: ocs = "RRA_izx"; break;
         case RRA_izy: ocs = "RRA_izy"; break;
-        case RRA_zp: ocs = "RRA_zp"; break;
+        case RRA_zp:  ocs = "RRA_zp"; break;
         case RRA_zpx: ocs = "RRA_zpx"; break;
-        case RTI: ocs = "RTI"; break;
+        case RTI:     ocs = "RTI";     rti();                             break;
         case RTS:     ocs = "RTS";     rts();                             break;
         case SAX_abs: ocs = "SAX_abs";                                    break;
         case SAX_izx: ocs = "SAX_izx";                                    break;
@@ -473,6 +488,7 @@ void Cpu::execute(bool debugBreak)
         default: ocs = "unknown"; break;
     }
 
+#if 0
     printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, SP:0x%03X\n",
             programCounter,
             ocs.c_str(),
@@ -484,11 +500,19 @@ void Cpu::execute(bool debugBreak)
             m_stackPointer);
             
     assert(programCounter != m_programCounter); // if these are equal we did nothing
+#endif
     ++m_videoTimer;
     if(17050 < m_videoTimer) { // roughly the ratio of system clock to framerate
         m_videoTimer = 0;
         if(m_memory.resetScreenDirty()) { // need to redraw
             redrawScreen();
+        }
+
+        // fire off a random timer interrupt for now
+        ++m_sysTimer;
+        if(0 < m_sysTimer) { // roughly pulled straight out of my ass
+            m_sysTimer = 0;
+            m_pendingIrq = true;
         }
     }
 }
@@ -623,6 +647,15 @@ void Cpu::inr(uint8_t& r)
     ++m_programCounter;
 }
 
+void Cpu::isr()
+{
+    m_pendingIrq = false;
+    m_memory.write(m_stackPointer--, ((m_programCounter >> 8) & 0xFF));
+    m_memory.write(m_stackPointer--, (m_programCounter & 0xFF));
+    m_memory.write(m_stackPointer--, m_status.all);
+    m_programCounter = m_memory.readWord(0xFFFE); // read the location of the main ISR from ROM
+}
+
 void Cpu::jmp(const AddrMode mode)
 {
     m_programCounter = computeAddress(mode);
@@ -751,6 +784,13 @@ void Cpu::ror(const AddrMode mode)
     }
 }
 
+void Cpu::rti()
+{
+    m_status.all = m_memory.read(++m_stackPointer);
+    m_programCounter = m_memory.read(++m_stackPointer);
+    m_programCounter |= (m_memory.read(++m_stackPointer) << 8);
+}
+
 void Cpu::rts()
 {
     m_stackPointer += 2;
@@ -835,6 +875,8 @@ void Cpu::init()
     m_cmdMap["brka"] = &Cpu::dbgBrka;
     m_cmdMap["brkd"] = &Cpu::dbgBrkd;
     m_cmdMap["lsbp"] = &Cpu::dbgLsbp;
+    m_cmdMap["seti"] = &Cpu::dbgSeti;
+    m_cmdMap["clri"] = &Cpu::dbgClri;
 
     m_window = SDL_CreateWindow("C64",
             SDL_WINDOWPOS_UNDEFINED,
@@ -844,6 +886,8 @@ void Cpu::init()
             SDL_WINDOW_SHOWN);
     m_surface = SDL_CreateRGBSurface(0, 320, 200, 32, 0, 0, 0, 0);
     SDL_FillRect(m_surface, 0, BG_COLOR);
+    SDL_Event evt;
+    while(SDL_PollEvent(&evt)); // drain the startup events
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)
@@ -926,6 +970,7 @@ Cpu::Cpu(uint8_t *romPtr, uint8_t *cgromPtr)
     , m_debugMode(false)
     , m_stepping(false)
     , m_cgromPtr(cgromPtr)
+    , m_pendingIrq(false)
 {
     init();
 }

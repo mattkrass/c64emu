@@ -14,14 +14,14 @@ const uint32_t FG_COLOR = 0xFFAAFFEE;
 struct StatusRegister {
     union {
         struct {
-            uint8_t negativeFlag:1;
-            uint8_t overflowFlag:1;
-            uint8_t unusedFlag:1;
-            uint8_t breakFlag:1;
-            uint8_t decimalModeFlag:1;
-            uint8_t interruptDisableFlag:1;
-            uint8_t zeroFlag:1;
             uint8_t carryFlag:1;
+            uint8_t zeroFlag:1;
+            uint8_t interruptDisableFlag:1;
+            uint8_t decimalModeFlag:1;
+            uint8_t breakFlag:1;
+            uint8_t unusedFlag:1;
+            uint8_t overflowFlag:1;
+            uint8_t negativeFlag:1;
         } bits;
         uint8_t all;
     };
@@ -161,6 +161,8 @@ private:
     StatusRegister                  m_status;
     MemoryController                m_memory;
     uint16_t                        m_videoTimer;
+    uint16_t                        m_sysTimer;
+    bool                            m_pendingIrq;
 
     // debug state
     typedef bool (MOS6510::Cpu::* cmdFunc)(const std::vector<std::string>&);
@@ -172,7 +174,6 @@ private:
     uint8_t*                        m_cgromPtr;
     SDL_Window *                    m_window;
     SDL_Surface *                   m_surface;
-
 
     // internal operations 
     void adc(const AddrMode mode);
@@ -190,6 +191,7 @@ private:
     void eor(const AddrMode mode);
     void inc(const AddrMode mode);
     void inr(uint8_t& r);
+    void isr();
     void jmp(const AddrMode mode);
     void jsr();
     void ldr(uint8_t & r, const AddrMode mode);
@@ -202,6 +204,7 @@ private:
     void plp();
     void rol(const AddrMode mode);
     void ror(const AddrMode mode);
+    void rti();
     void rts();
     void sbc(const AddrMode mode);
     void sec();
@@ -226,6 +229,8 @@ private:
     bool dbgBrka(const std::vector<std::string>& args);
     bool dbgBrkd(const std::vector<std::string>& args);
     bool dbgLsbp(const std::vector<std::string>& args);
+    bool dbgSeti(const std::vector<std::string>& args);
+    bool dbgClri(const std::vector<std::string>& args);
 
 public:
     Cpu(const Cpu& rhs);
