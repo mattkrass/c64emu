@@ -99,7 +99,7 @@ int main(int argc, char **argv)
         exit(rc);
     }
 
-    if(SDL_IsTextInputActive) {
+    if(SDL_IsTextInputActive()) {
         printf("Stopping text input for performance reasons!\n");
         SDL_StopTextInput();
     }
