@@ -24,3 +24,4 @@ CMakeFiles/
 *.cmake
 log.txt
 compile_commands.json
+*.log

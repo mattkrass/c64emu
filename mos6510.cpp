@@ -23,6 +23,24 @@ const char cgromLookup[] =
       '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
       '~', '~', '~', '~', '~', '~', '~', '~' };
 
+const uint32_t colors[] =
+    { 0xFF000000,
+      0xFFFFFFFF,
+      0xFF880000,
+      0xFFAAFFEE,
+      0xFFCC44CC,
+      0xFF00CC55,
+      0xFF0000AA,
+      0xFFEEEE77,
+      0xFFDD88EE,
+      0xFF664400,
+      0xFFFF7777,
+      0xFF333333,
+      0xFF777777,
+      0xFFAAFF66,
+      0xFF0088FF,
+      0xFFBBBBBB };
+
 void Cpu::debugPrompt()
 {
     redrawScreen();
@@ -488,19 +506,20 @@ void Cpu::execute(bool debugBreak)
         default: ocs = "unknown"; break;
     }
 
-#if 0
-    printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, SP:0x%03X\n",
-            programCounter,
-            ocs.c_str(),
-            m_programCounter,
-            m_accumulator,
-            m_xIndex,
-            m_yIndex,
-            m_status.all,
-            m_stackPointer);
-            
-    assert(programCounter != m_programCounter); // if these are equal we did nothing
-#endif
+    if(m_debugMode || debugBreak) {
+        printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, SP:0x%03X\n",
+                programCounter,
+                ocs.c_str(),
+                m_programCounter,
+                m_accumulator,
+                m_xIndex,
+                m_yIndex,
+                m_status.all,
+                m_stackPointer);
+
+        assert(programCounter != m_programCounter); // if these are equal we did nothing
+    }
+
     ++m_videoTimer;
     if(17050 < m_videoTimer) { // roughly the ratio of system clock to framerate
         m_videoTimer = 0;
@@ -884,10 +903,12 @@ void Cpu::init()
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
             SDL_WINDOW_SHOWN);
-    m_surface = SDL_CreateRGBSurface(0, 320, 200, 32, 0, 0, 0, 0);
-    SDL_FillRect(m_surface, 0, BG_COLOR);
-    SDL_Event evt;
-    while(SDL_PollEvent(&evt)); // drain the startup events
+    m_surface = SDL_CreateRGBSurface(0, 384, 272, 32, 0, 0, 0, 0);
+
+    // set default color registers
+    m_memory.write(646, 14);
+    m_memory.write(53280, 6);
+    m_memory.write(53281, 14);
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)
@@ -946,15 +967,19 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
 
 void Cpu::redrawScreen()
 {
+    const uint32_t bdColor = colors[m_memory.read(53280)];
+    const uint32_t bgColor = colors[m_memory.read(53281)];
+    const uint32_t fgColor = colors[m_memory.read(646)];
+    SDL_FillRect(m_surface, 0, bdColor);
     uint32_t* pixelPtr = ((uint32_t*)m_surface->pixels);
     for(int i = 0x0000; i < 0x03E8; ++i) {
         uint8_t data = m_memory.read(i + 0x0400);
         for(int pixelLine = 0; pixelLine < 8; ++pixelLine) {
             uint8_t rowBits = m_cgromPtr[(data * 8) + pixelLine];
-            int offset = (320 * pixelLine) + ((i % 40) * 8) + ((i / 40) * 2560);
+            int offset = 13856 + (pixelLine * 384) + ((i % 40) * 8) + ((i / 40) * 3072);
             uint8_t mask = 0x80;
             for(int bit = 0; bit < 8; ++bit) {
-                pixelPtr[offset + bit] = (rowBits & mask) ? FG_COLOR : BG_COLOR;
+                pixelPtr[offset + bit] = (rowBits & mask) ? fgColor : bgColor;
                 mask >>= 1;
             }
         }
@@ -996,6 +1021,19 @@ int Cpu::removeBreakpoint(uint16_t bpAddr)
 void Cpu::setDebugState(bool mode)
 {
     m_debugMode = mode;
+}
+
+void Cpu::injectKeycode(uint8_t keycode)
+{
+    uint8_t queueDepth = m_memory.read(0x00C6);
+    uint16_t targetAddr = 0x0277 + queueDepth++;
+    m_memory.write(targetAddr, keycode);
+    m_memory.write(0x00C6, queueDepth);
+}
+
+MemoryController& Cpu::getMemory()
+{
+    return m_memory;
 }
 
 } // namespace MOS6510

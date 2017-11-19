@@ -7,8 +7,8 @@
 #include "memorycontroller.h"
 
 namespace MOS6510 {
-const int SCREEN_WIDTH  = 1280;
-const int SCREEN_HEIGHT = 800;
+const int SCREEN_WIDTH  = 960;//768;
+const int SCREEN_HEIGHT = 680;// 544;
 const uint32_t BG_COLOR = 0xFF9083EC;
 const uint32_t FG_COLOR = 0xFFAAFFEE;
 
@@ -243,6 +243,8 @@ public:
     void setDebugState(bool mode);
 
     void execute(bool debugBreak);
+    void injectKeycode(uint8_t keycode); // <-- super temporary, I swear
+    MemoryController& getMemory();
 };
 }
 #endif // INCLUDED_MOS6510
