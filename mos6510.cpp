@@ -1023,14 +1023,6 @@ void Cpu::setDebugState(bool mode)
     m_debugMode = mode;
 }
 
-void Cpu::injectKeycode(uint8_t keycode)
-{
-    uint8_t queueDepth = m_memory.read(0x00C6);
-    uint16_t targetAddr = 0x0277 + queueDepth++;
-    m_memory.write(targetAddr, keycode);
-    m_memory.write(0x00C6, queueDepth);
-}
-
 MemoryController& Cpu::getMemory()
 {
     return m_memory;
