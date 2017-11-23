@@ -4,6 +4,7 @@
 #include <SDL2/SDL.h>
 #include "mos6510.h"
 #include "memorycontroller.h"
+#include <stdio.h>
 
 bool g_setDebug = false;
 void sig_callback(int signum)
@@ -164,44 +165,6 @@ int main(int argc, char **argv)
                     }
                 }
             }
-
-#if 0
-            if(SDL_KEYDOWN == evt.type) {
-                SDL_Keycode keycode = evt.key.keysym.sym;
-                std::cout << "Key event! "
-                          << keycode
-                          << " Mod = "
-                          << evt.key.keysym.mod
-                          << std::endl;
-                if(KMOD_NONE == evt.key.keysym.mod) {
-                    if(SDLK_ESCAPE == keycode) {
-                        exit(0);
-                    } else if(SDLK_a <= keycode && SDLK_z >= keycode) {
-                        mos6510.injectKeycode(keycode - 32);
-                    } else if((SDLK_0 <= keycode && SDLK_9 >= keycode) ||
-                              (SDLK_SPACE == keycode)   ||
-                              (SDLK_RETURN == keycode)  ||
-                              (SDLK_LEFTPAREN == keycode)  ||
-                              (SDLK_RIGHTPAREN == keycode)  ||
-                              (SDLK_COMMA == keycode)) {
-                        mos6510.injectKeycode(keycode);
-                    } else if(SDLK_QUOTE == keycode) {
-                        mos6510.injectKeycode(0x22);
-                    }
-                } else if(KMOD_LSHIFT == evt.key.keysym.mod) {
-                    if(SDLK_0 == keycode) {
-                        mos6510.injectKeycode(0x29);
-                    } else if (SDLK_9 == keycode) {
-                        mos6510.injectKeycode(0x28);
-                    }
-                } else if(KMOD_LCTRL == evt.key.keysym.mod) {
-                    if(SDLK_c == keycode) {
-                        printf("RUN/STOP\n");
-                        mos6510.injectKeycode(0x03);
-                    }
-                }
-            }
-#endif
         }
     }
 
