@@ -122,7 +122,7 @@ int mapKeyToC64(SDL_Keycode key)
         case SDLK_l             : return 42;
         case SDLK_MINUS         : return 43;
         case SDLK_PERIOD        : return 44;
-        case SDLK_COLON         : return 45;
+        case SDLK_QUOTE         : return 45;
         case SDLK_AT            : return 46;
         case SDLK_COMMA         : return 47;
         case SDLK_BACKSLASH     : return 48;
