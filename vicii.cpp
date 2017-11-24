@@ -117,7 +117,7 @@ int mapKeyToC64(SDL_Keycode key)
         case SDLK_k             : return 37;
         case SDLK_o             : return 38;
         case SDLK_n             : return 39;
-        case SDLK_PLUS          : return 40;
+        case SDLK_LEFTBRACKET   : return 40;
         case SDLK_p             : return 41;
         case SDLK_l             : return 42;
         case SDLK_MINUS         : return 43;
@@ -154,7 +154,6 @@ void VICII::execute()
     uint32_t color = 0;
     const uint32_t bdColor = colors[m_registers.reg.borderColor];
     const uint32_t bgColor = colors[m_registers.reg.backgroundColor0];
-    const uint32_t fgColor = colors[m_memory->read(646)];
     for(int ix = 0; ix < 8; ++ix) {
         if(13 < raster && 249 > raster) { // within the non-blanked portion
             uint16_t x = xCoord + ix;
@@ -164,17 +163,18 @@ void VICII::execute()
                         uint8_t sx = (x - 96) / 8;
                         uint8_t sy = (raster - 30) / 8;
                         uint8_t sl = (raster - 30) % 8;
-                        uint16_t sxy = 0x400 + ((40 * sy) + sx);
+                        uint16_t sxy = 0x0400 + ((40 * sy) + sx);
+                        uint16_t cxy = 0xD800 + ((40 * sy) + sx);
                         uint8_t ch = m_memory->read(sxy);
                         uint8_t pixels = m_cgromPtr[(ch * 8) + sl];
                         uint8_t mask = (1 << (7 - ((x - 96) % 8)));
                         if(mask == (mask & pixels)) {
-                            color = fgColor;
+                            color = colors[m_memory->read(cxy)];
                         } else {
                             color = bgColor;
                         }
                     } else {
-                        color = fgColor;
+                        color = bdColor;
                     }
                 } else {
                     color = bdColor;

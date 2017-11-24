@@ -1,5 +1,6 @@
 #ifndef INCLUDED_MEMORY_CONTROLLER_H
 #define INCLUDED_MEMORY_CONTROLLER_H
+#include <stdint.h>
 
 namespace MOS6510 {
 enum BankControlSignals {
@@ -14,7 +15,6 @@ private:
     uint8_t     m_rom[16384];
     uint8_t     m_scanIdx;
     uint8_t     m_matrix[8];
-    bool        m_screenDirty;
 
     bool        checkMask(uint8_t mask, uint8_t value);
 public:
@@ -23,7 +23,6 @@ public:
 
     void        write(uint16_t addr, uint8_t data);
     void        writeWord(uint16_t addr, uint16_t word);
-    bool        resetScreenDirty();
     void        setKeyDown(int key);
     void        setKeyUp(int key);
 

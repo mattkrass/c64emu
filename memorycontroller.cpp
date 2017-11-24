@@ -15,8 +15,6 @@ MemoryController::MemoryController(uint8_t *rom)
     for(size_t i = 0; i < 8; ++i) {
         m_matrix[i] = 0xFF;
     }
-
-    m_screenDirty = false;
 }
 
 bool MemoryController::checkMask(uint8_t mask, uint8_t value)
@@ -91,7 +89,7 @@ void MemoryController::write(uint16_t addr, uint8_t data)
 {
     uint8_t page = addr / 256;
     uint8_t modeFlags = m_sram[0x0001];
-    if(page > 211 && page <= 223) {
+    if((page > 211 && page <= 215) || (page > 219 && page <= 223)) {
         if(0 == modeFlags || BankControlSignals::CHAREN == modeFlags) {
             m_sram[addr] = data;
         } else if(checkMask(BankControlSignals::CHAREN, modeFlags)) {
@@ -109,19 +107,10 @@ void MemoryController::write(uint16_t addr, uint8_t data)
                     case 0xFE: m_scanIdx = 0; break;
                 }
             }
-            return; // <-- this should be I/O devices, TODO!!!
         } else { // character rom
             m_sram[addr] = data;
         }
     } else {
-        if(page > 3 && page <= 8) { // video memory, mark it dirty
-            m_screenDirty = true;
-        }
-
-        //if(0x91 == addr) {
-        //    printf("Storing stop column as 0x%02X\n", data);
-        //}
-
         m_sram[addr] = data;
     }
 }
@@ -132,17 +121,9 @@ void MemoryController::writeWord(uint16_t addr, uint16_t word)
     write(addr + 1, ((word >> 8) & 0xFF));
 }
 
-bool MemoryController::resetScreenDirty()
-{
-    bool tmp = m_screenDirty;
-    m_screenDirty = false;
-    return tmp;
-}
-
 void MemoryController::setKeyDown(int key)
 {
     m_matrix[(key / 8)] &= ~(1 << (key % 8));
-    //printf("Set m_matrix[%d] to 0x%02X\n", (key / 8), m_matrix[(key / 8)]);
 }
 
 void MemoryController::setKeyUp(int key)
