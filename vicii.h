@@ -1,7 +1,14 @@
 #ifndef INCLUDED_VICII_H
 #define INCLUDED_VICII_H
 
+#include <SDL2/SDL.h>
+#include <stdint.h>
+
 namespace MOS6510 {
+const int SCREEN_WIDTH  = 1030;
+const int SCREEN_HEIGHT = 585;
+const uint32_t BG_COLOR = 0xFF9083EC;
+const uint32_t FG_COLOR = 0xFFAAFFEE;
 
 class MemoryController;
 
@@ -37,10 +44,8 @@ struct VICIIRegisterFile {
             uint8_t interruptEnable;
             uint8_t spriteDataPriority;
             uint8_t spriteMulticolor;
-            uint8_t spriteYExpansion;
             uint8_t spriteSpriteCollision;
             uint8_t spriteDataCollision;
-            uint8_t borderColor;
             uint8_t borderColor;
             uint8_t backgroundColor0;
             uint8_t backgroundColor1;
@@ -58,8 +63,8 @@ struct VICIIRegisterFile {
             uint8_t spriteColor7;
         } reg;
         uint8_t all[47];
-    }
-}
+    };
+};
 
 class VICII {
 private:
@@ -67,19 +72,23 @@ private:
     MemoryController*   m_memory;
     uint16_t            m_rasterTrigger;
     uint8_t             m_xCycle;
+    SDL_Window *        m_window;
+    SDL_Surface *       m_surface;
+    uint8_t*            m_cgromPtr;
 
     uint16_t getRasterLine();
     void setRasterLine(uint16_t rasterLine);
 
 public:
-    VICII(MemoryController *memPtr);
+    VICII(MemoryController *memPtr, uint8_t *cgromPtr);
     ~VICII();
     
     uint8_t read(uint8_t addr);
     void write(uint8_t addr, uint8_t data);
 
+    void init();
     void execute();
-}
+};
 
 }
 

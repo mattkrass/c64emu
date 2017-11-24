@@ -23,27 +23,8 @@ const char cgromLookup[] =
       '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~', '~',
       '~', '~', '~', '~', '~', '~', '~', '~' };
 
-const uint32_t colors[] =
-    { 0xFF000000,
-      0xFFFFFFFF,
-      0xFF880000,
-      0xFFAAFFEE,
-      0xFFCC44CC,
-      0xFF00CC55,
-      0xFF0000AA,
-      0xFFEEEE77,
-      0xFFDD88EE,
-      0xFF664400,
-      0xFFFF7777,
-      0xFF333333,
-      0xFF777777,
-      0xFFAAFF66,
-      0xFF0088FF,
-      0xFFBBBBBB };
-
 void Cpu::debugPrompt()
 {
-    redrawScreen();
     bool promptActive = true;
     while (promptActive) {
         std::cout << "dbg> ";
@@ -126,7 +107,7 @@ bool Cpu::dbgWrit(const std::vector<std::string>& args)
     }
 
     addr = parseString(args[1]);
-    for(int idx = 2; idx < args.size(); ++idx) {
+    for(size_t idx = 2; idx < args.size(); ++idx) {
         printf("A: 0x%04X B: 0x%02X\n", addr, parseString(args[idx]));
         m_memory.write(addr++, parseString(args[idx]));
     }
@@ -521,18 +502,9 @@ void Cpu::execute(bool debugBreak)
     }
 
     ++m_videoTimer;
-    if(17050 < m_videoTimer) { // roughly the ratio of system clock to framerate
+    if(34100 < m_videoTimer) { // roughly the ratio of system clock to framerate
         m_videoTimer = 0;
-        if(m_memory.resetScreenDirty()) { // need to redraw
-            redrawScreen();
-        }
-
-        // fire off a random timer interrupt for now
-        ++m_sysTimer;
-        if(0 < m_sysTimer) { // roughly pulled straight out of my ass
-            m_sysTimer = 0;
-            m_pendingIrq = true;
-        }
+        m_pendingIrq = true;
     }
 }
 
@@ -896,19 +868,6 @@ void Cpu::init()
     m_cmdMap["lsbp"] = &Cpu::dbgLsbp;
     m_cmdMap["seti"] = &Cpu::dbgSeti;
     m_cmdMap["clri"] = &Cpu::dbgClri;
-
-    m_window = SDL_CreateWindow("C64",
-            SDL_WINDOWPOS_UNDEFINED,
-            SDL_WINDOWPOS_UNDEFINED,
-            SCREEN_WIDTH,
-            SCREEN_HEIGHT,
-            SDL_WINDOW_SHOWN);
-    m_surface = SDL_CreateRGBSurface(0, 384, 272, 32, 0, 0, 0, 0);
-
-    // set default color registers
-    m_memory.write(646, 14);
-    m_memory.write(53280, 6);
-    m_memory.write(53281, 14);
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)
@@ -965,44 +924,21 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
     return addr;
 }
 
-void Cpu::redrawScreen()
-{
-    const uint32_t bdColor = colors[m_memory.read(53280)];
-    const uint32_t bgColor = colors[m_memory.read(53281)];
-    const uint32_t fgColor = colors[m_memory.read(646)];
-    SDL_FillRect(m_surface, 0, bdColor);
-    uint32_t* pixelPtr = ((uint32_t*)m_surface->pixels);
-    for(int i = 0x0000; i < 0x03E8; ++i) {
-        uint8_t data = m_memory.read(i + 0x0400);
-        for(int pixelLine = 0; pixelLine < 8; ++pixelLine) {
-            uint8_t rowBits = m_cgromPtr[(data * 8) + pixelLine];
-            int offset = 13856 + (pixelLine * 384) + ((i % 40) * 8) + ((i / 40) * 3072);
-            uint8_t mask = 0x80;
-            for(int bit = 0; bit < 8; ++bit) {
-                pixelPtr[offset + bit] = (rowBits & mask) ? fgColor : bgColor;
-                mask >>= 1;
-            }
-        }
-    }
 
-    SDL_Rect tgt; tgt.x = 0; tgt.y = 0; tgt.w = SCREEN_WIDTH, tgt.h = SCREEN_HEIGHT;
-    SDL_BlitScaled(m_surface, 0, SDL_GetWindowSurface(m_window), &tgt);
-    SDL_UpdateWindowSurface(m_window);
-}
 
-Cpu::Cpu(uint8_t *romPtr, uint8_t *cgromPtr)
+Cpu::Cpu(uint8_t *romPtr)
     : m_memory(romPtr)
+    , m_videoTimer(0)
+    , m_pendingIrq(false)
     , m_debugMode(false)
     , m_stepping(false)
-    , m_cgromPtr(cgromPtr)
-    , m_pendingIrq(false)
 {
     init();
 }
 
 Cpu::~Cpu()
 {
-    SDL_DestroyWindow(m_window);
+
 }
 
 int Cpu::addBreakpoint(uint16_t bpAddr)
