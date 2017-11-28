@@ -44,8 +44,14 @@ uint8_t MemoryController::read(uint16_t addr)
         if(0 == modeFlags || BankControlSignals::CHAREN == modeFlags) {
             return m_sram[addr];
         } else if(checkMask(BankControlSignals::CHAREN, modeFlags)) {
-            if(0xD012 == addr) { // raster line *HACK*
-                return 0;
+            if(page > 207 && page <= 211) { // VIC registers
+                if(addr <= 0xD02E) {
+                    return m_vicPtr->read(addr - 0xD000);
+                } else if(addr > 0xD02E && addr < 0xD040) {
+                    return 0xFF;
+                } else if(addr < 0xD3FF) {
+                    return m_vicPtr->read(addr - 0xD400);
+                }
             } else if(0xDC01 == addr) {
                 if(8 > m_scanIdx) {
                     return m_matrix[m_scanIdx];
@@ -110,6 +116,14 @@ void MemoryController::write(uint16_t addr, uint8_t data)
         } else { // character rom
             m_sram[addr] = data;
         }
+    } else if(page > 207 && page <= 211) {
+        if(addr > 0xD02E && addr < 0xD040) {
+            return;
+        } else if (addr >= 0xD040) {
+            m_vicPtr->write(addr - 0xD040, data);
+        } else {
+            m_vicPtr->write(addr - 0xD000, data);
+        }
     } else {
         m_sram[addr] = data;
     }
@@ -129,7 +143,11 @@ void MemoryController::setKeyDown(int key)
 void MemoryController::setKeyUp(int key)
 {
     m_matrix[(key / 8)] |= (1 << (key % 8));
-    //printf("Set m_matrix[%d] to 0x%02X\n", (key / 8), m_matrix[(key / 8)]);
+}
+
+void MemoryController::registerVic(VICII *vicPtr)
+{
+    m_vicPtr = vicPtr;
 }
 
 } // namespace MOS6510

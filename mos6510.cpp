@@ -926,8 +926,8 @@ uint16_t Cpu::computeAddress(const AddrMode mode)
 
 
 
-Cpu::Cpu(uint8_t *romPtr)
-    : m_memory(romPtr)
+Cpu::Cpu(MemoryController& memory)
+    : m_memory(memory)
     , m_videoTimer(0)
     , m_pendingIrq(false)
     , m_debugMode(false)

@@ -47,6 +47,7 @@ VICII::VICII(MemoryController *memPtr, uint8_t *cgromPtr)
 {
     assert(m_memory);
     init();
+    m_memory->registerVic(this);
 }
 
 VICII::~VICII()

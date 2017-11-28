@@ -44,6 +44,7 @@ struct VICIIRegisterFile {
             uint8_t interruptEnable;
             uint8_t spriteDataPriority;
             uint8_t spriteMulticolor;
+            uint8_t spriteXExpansion;
             uint8_t spriteSpriteCollision;
             uint8_t spriteDataCollision;
             uint8_t borderColor;

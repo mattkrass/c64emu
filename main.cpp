@@ -60,8 +60,9 @@ int main(int argc, char **argv)
 
     signal(SIGTSTP, sig_callback);
 
-    MOS6510::Cpu mos6510(rom);
-    MOS6510::VICII vicii(&mos6510.getMemory(), cgrom);
+    MOS6510::MemoryController memoryController(rom);
+    MOS6510::Cpu mos6510(memoryController);
+    MOS6510::VICII vicii(&memoryController, cgrom);
     bool setDebug = false;
     while(1) {
         mos6510.execute(setDebug);

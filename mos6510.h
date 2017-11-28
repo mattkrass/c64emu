@@ -156,7 +156,7 @@ private:
     uint8_t                         m_xIndex;
     uint8_t                         m_yIndex;
     StatusRegister                  m_status;
-    MemoryController                m_memory;
+    MemoryController&               m_memory;
     uint16_t                        m_videoTimer;
     uint16_t                        m_sysTimer;
     bool                            m_pendingIrq;
@@ -228,7 +228,7 @@ private:
 
 public:
     Cpu(const Cpu& rhs);
-    Cpu(uint8_t *romPtr);
+    Cpu(MemoryController& memory);
     ~Cpu();
 
     int addBreakpoint(uint16_t bpAddr);

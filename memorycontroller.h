@@ -1,6 +1,7 @@
 #ifndef INCLUDED_MEMORY_CONTROLLER_H
 #define INCLUDED_MEMORY_CONTROLLER_H
 #include <stdint.h>
+#include "vicii.h"
 
 namespace MOS6510 {
 enum BankControlSignals {
@@ -15,6 +16,7 @@ private:
     uint8_t     m_rom[16384];
     uint8_t     m_scanIdx;
     uint8_t     m_matrix[8];
+    VICII*      m_vicPtr;
 
     bool        checkMask(uint8_t mask, uint8_t value);
 public:
@@ -25,6 +27,7 @@ public:
     void        writeWord(uint16_t addr, uint16_t word);
     void        setKeyDown(int key);
     void        setKeyUp(int key);
+    void        registerVic(VICII *vicPtr);
 
     MemoryController(uint8_t *rom);
 };
