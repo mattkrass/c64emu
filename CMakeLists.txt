@@ -5,5 +5,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 file(GLOB SRC_FILES *.cpp)
-add_executable(test.tsk ${SRC_FILES})
-target_link_libraries(test.tsk SDL2)
+add_executable(c64emu ${SRC_FILES})
+target_link_libraries(c64emu SDL2)

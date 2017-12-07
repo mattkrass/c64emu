@@ -19,6 +19,7 @@ configure
 *.dSYM
 *.swp
 *.tsk
+c64emu
 CMakeCache.txt
 CMakeFiles/
 *.cmake
