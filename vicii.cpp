@@ -156,7 +156,7 @@ void VICII::execute()
     const uint32_t bdColor = colors[m_registers.reg.borderColor];
     const uint32_t bgColor = colors[m_registers.reg.backgroundColor0];
     for(int ix = 0; ix < 8; ++ix) {
-        if(13 < raster && 249 > raster) { // within the non-blanked portion
+        if(13 < raster && 248 > raster) { // within the non-blanked portion
             uint16_t x = xCoord + ix;
             if(49 < x && 462 > x) {
                 if(30 < raster && 230 > raster) { // non-border
