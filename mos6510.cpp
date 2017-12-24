@@ -109,7 +109,7 @@ bool Cpu::dbgWrit(const std::vector<std::string>& args)
     addr = parseString(args[1]);
     for(size_t idx = 2; idx < args.size(); ++idx) {
         printf("A: 0x%04X B: 0x%02X\n", addr, parseString(args[idx]));
-        m_memory.write(addr++, parseString(args[idx]));
+        m_memory.write(addr++, parseString(args[idx]), 0);
     }
 
     return true; // stay in debug
@@ -194,6 +194,38 @@ bool Cpu::dbgClri(const std::vector<std::string>& args)
     return true; // stay in debug
 }
 
+bool Cpu::dbgSreg(const std::vector<std::string>& args)
+{
+    uint16_t value = 0;
+    if(3 > args.size()) {
+        std::cout << "sreg <A/X/Y/S> <new value>" << std::endl;
+    } else {
+        value = parseString(args[2]);
+    }
+
+    const std::string& reg = args[1];
+    uint8_t* regptr;
+
+    if("A" == reg) {
+        regptr = &m_accumulator;
+    } else if("X" == reg) {
+        regptr = &m_xIndex;
+    } else if("Y" == reg) {
+        regptr = &m_yIndex;
+    } else if("S" == reg) {
+        regptr = &m_status.all;
+    } else {
+        std::cout << "Invalid register." << std::endl;
+        return true;
+    }
+
+    m_status.bits.negativeFlag = (value & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == value);
+    *regptr = value;
+
+    return true; // stay in debug
+}
+
 void Cpu::execute(bool debugBreak)
 {
     if (0 == m_status.bits.interruptDisableFlag && m_pendingIrq) {
@@ -203,7 +235,7 @@ void Cpu::execute(bool debugBreak)
     uint16_t programCounter = m_programCounter;
     uint8_t opcode = m_memory.read(programCounter);
 
-    if(m_debugMode || debugBreak) {
+    if(m_debugMode || debugBreak || m_stepping) {
         if(m_stepCount) {
             --m_stepCount;
         }
@@ -487,7 +519,7 @@ void Cpu::execute(bool debugBreak)
         default: ocs = "unknown"; break;
     }
 
-    if(m_debugMode || debugBreak) {
+    if(m_debugMode || debugBreak || m_stepping) {
         printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, SP:0x%03X\n",
                 programCounter,
                 ocs.c_str(),
@@ -542,7 +574,7 @@ void Cpu::asl(const AddrMode mode)
     m_status.bits.zeroFlag = (0 == tmp);
     m_status.bits.carryFlag = newCarry;
     if(AddrMode::IMP != mode) {
-        m_memory.write(addr, tmp);
+        m_memory.write(addr, tmp, m_programCounter);
     } else {
         m_accumulator = tmp;
     }
@@ -603,7 +635,7 @@ void Cpu::dec(const AddrMode mode)
     uint8_t tmp = m_memory.read(addr);
     --m_programCounter; // unwind it so der can click it forward again safely
     der(tmp);
-    m_memory.write(addr, tmp);
+    m_memory.write(addr, tmp, m_programCounter);
 }
 
 void Cpu::der(uint8_t& r)
@@ -627,7 +659,7 @@ void Cpu::inc(const AddrMode mode)
     uint8_t tmp = m_memory.read(addr);
     --m_programCounter; // unwind it so inr can click it forward again safely
     inr(tmp);
-    m_memory.write(addr, tmp);
+    m_memory.write(addr, tmp, m_programCounter);
 }
 
 void Cpu::inr(uint8_t& r)
@@ -641,9 +673,9 @@ void Cpu::inr(uint8_t& r)
 void Cpu::isr()
 {
     m_pendingIrq = false;
-    m_memory.write(m_stackPointer--, ((m_programCounter >> 8) & 0xFF));
-    m_memory.write(m_stackPointer--, (m_programCounter & 0xFF));
-    m_memory.write(m_stackPointer--, m_status.all);
+    m_memory.write(m_stackPointer--, ((m_programCounter >> 8) & 0xFF), m_programCounter);
+    m_memory.write(m_stackPointer--, (m_programCounter & 0xFF), m_programCounter);
+    m_memory.write(m_stackPointer--, m_status.all, m_programCounter);
     m_programCounter = m_memory.readWord(0xFFFE); // read the location of the main ISR from ROM
 }
 
@@ -654,7 +686,7 @@ void Cpu::jmp(const AddrMode mode)
 
 void Cpu::jsr()
 {
-    m_memory.writeWord(m_stackPointer - 1, m_programCounter + 2);
+    m_memory.writeWord(m_stackPointer - 1, m_programCounter + 2, m_programCounter);
     m_stackPointer -= 2;
     m_programCounter = m_memory.readWord(++m_programCounter);
 }
@@ -683,7 +715,7 @@ void Cpu::lsr(const AddrMode mode)
     m_status.bits.zeroFlag = (0 == tmp);
     m_status.bits.carryFlag = newCarry;
     if(AddrMode::IMP != mode) {
-        m_memory.write(addr, tmp);
+        m_memory.write(addr, tmp, m_programCounter);
     } else {
         m_accumulator = tmp;
     }
@@ -703,13 +735,13 @@ void Cpu::ora(const AddrMode mode)
 
 void Cpu::pha()
 {
-    m_memory.write(m_stackPointer--, m_accumulator);
+    m_memory.write(m_stackPointer--, m_accumulator, m_programCounter);
     ++m_programCounter;
 }
 
 void Cpu::php()
 {
-    m_memory.write(m_stackPointer--, m_status.all);
+    m_memory.write(m_stackPointer--, m_status.all, m_programCounter);
     ++m_programCounter;
 }
 
@@ -745,7 +777,7 @@ void Cpu::rol(const AddrMode mode)
     m_status.bits.zeroFlag = (0 == tmp);
     m_status.bits.carryFlag = newCarry;
     if(AddrMode::IMP != mode) {
-        m_memory.write(addr, tmp);
+        m_memory.write(addr, tmp, m_programCounter);
     } else {
         m_accumulator = tmp;
     }
@@ -769,7 +801,7 @@ void Cpu::ror(const AddrMode mode)
     m_status.bits.zeroFlag = (0 == tmp);
     m_status.bits.carryFlag = newCarry;
     if(AddrMode::IMP != mode) {
-        m_memory.write(addr, tmp);
+        m_memory.write(addr, tmp, m_programCounter);
     } else {
         m_accumulator = tmp;
     }
@@ -825,7 +857,7 @@ void Cpu::sei()
 
 void Cpu::str(const uint8_t &r, const AddrMode mode)
 {
-    m_memory.write(computeAddress(mode), r);
+    m_memory.write(computeAddress(mode), r, m_programCounter);
 }
 
 void Cpu::tsd(const uint8_t &src, uint8_t &dst)
@@ -850,8 +882,8 @@ void Cpu::txs()
 
 void Cpu::init()
 {
-    m_memory.write(0x0000, 0xFF);
-    m_memory.write(0x0001, 0x07);
+    m_memory.write(0x0000, 0xFF, 0);
+    m_memory.write(0x0001, 0x07, 0);
     m_programCounter = m_memory.readWord(0xFFFC);
     m_stackPointer = 0x1FF;
 
@@ -868,6 +900,7 @@ void Cpu::init()
     m_cmdMap["lsbp"] = &Cpu::dbgLsbp;
     m_cmdMap["seti"] = &Cpu::dbgSeti;
     m_cmdMap["clri"] = &Cpu::dbgClri;
+    m_cmdMap["sreg"] = &Cpu::dbgSreg;
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)

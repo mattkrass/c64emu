@@ -11,10 +11,6 @@ MemoryController::MemoryController(uint8_t *rom)
     for(size_t i = 0; i < 65536; ++i) {
         m_sram[i] = 1;
     }
-
-    for(size_t i = 0; i < 8; ++i) {
-        m_matrix[i] = 0xFF;
-    }
 }
 
 bool MemoryController::checkMask(uint8_t mask, uint8_t value)
@@ -52,19 +48,8 @@ uint8_t MemoryController::read(uint16_t addr)
                 } else if(addr < 0xD3FF) {
                     return m_vicPtr->read(addr - 0xD400);
                 }
-            } else if(0xDC01 == addr) {
-                if(8 > m_scanIdx) {
-                    return m_matrix[m_scanIdx];
-                } else if (8 == m_scanIdx) {
-                    uint8_t mask = 0xFF;
-                    for(int i = 0; i < 8; ++i) {
-                        mask &= m_matrix[i];
-                    }
-
-                    return mask;
-                } else {
-                    return 0xFF;
-                }
+            } else if((220 == page) || (221 == page)) {
+                return m_ioPtr->read(addr - 0xDC00);
             }
 
             return m_sram[addr]; // <-- this should be I/O devices, TODO!!!
@@ -91,27 +76,15 @@ uint16_t MemoryController::readWord(uint16_t addr)
     return word;
 }
 
-void MemoryController::write(uint16_t addr, uint8_t data)
+void MemoryController::write(uint16_t addr, uint8_t data, uint16_t pc)
 {
     uint8_t page = addr / 256;
     uint8_t modeFlags = m_sram[0x0001];
-    if((page > 211 && page <= 215) || (page > 219 && page <= 223)) {
+    if((page > 211 && page <= 215) || (page > 221 && page <= 223)) {
         if(0 == modeFlags || BankControlSignals::CHAREN == modeFlags) {
             m_sram[addr] = data;
         } else if(checkMask(BankControlSignals::CHAREN, modeFlags)) {
             if(0xDC00 == addr) {
-                switch(data) {
-                    case 0xFF: m_scanIdx = 9; break;
-                    case 0x00: m_scanIdx = 8; break;
-                    case 0x7F: m_scanIdx = 7; break;
-                    case 0xBF: m_scanIdx = 6; break;
-                    case 0xDF: m_scanIdx = 5; break;
-                    case 0xEF: m_scanIdx = 4; break;
-                    case 0xF7: m_scanIdx = 3; break;
-                    case 0xFB: m_scanIdx = 2; break;
-                    case 0xFD: m_scanIdx = 1; break;
-                    case 0xFE: m_scanIdx = 0; break;
-                }
             }
         } else { // character rom
             m_sram[addr] = data;
@@ -124,30 +97,37 @@ void MemoryController::write(uint16_t addr, uint8_t data)
         } else {
             m_vicPtr->write(addr - 0xD000, data);
         }
+    } else if((220 == page) || (221 == page)) {
+        m_ioPtr->write(addr - 0xDC00, data, pc);
     } else {
         m_sram[addr] = data;
     }
 }
 
-void MemoryController::writeWord(uint16_t addr, uint16_t word)
+void MemoryController::writeWord(uint16_t addr, uint16_t word, uint16_t pc)
 {
-    write(addr,      (word       & 0xFF));
-    write(addr + 1, ((word >> 8) & 0xFF));
+    write(addr,      (word       & 0xFF), pc);
+    write(addr + 1, ((word >> 8) & 0xFF), pc);
 }
 
 void MemoryController::setKeyDown(int key)
 {
-    m_matrix[(key / 8)] &= ~(1 << (key % 8));
+    m_ioPtr->setKeyDown(key);
 }
 
 void MemoryController::setKeyUp(int key)
 {
-    m_matrix[(key / 8)] |= (1 << (key % 8));
+    m_ioPtr->setKeyUp(key);
 }
 
-void MemoryController::registerVic(VICII *vicPtr)
+void MemoryController::registerVIC(VICII *vicPtr)
 {
     m_vicPtr = vicPtr;
+}
+
+void MemoryController::registerIO(IOController *ioPtr)
+{
+    m_ioPtr = ioPtr;
 }
 
 } // namespace MOS6510

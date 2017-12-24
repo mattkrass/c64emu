@@ -5,6 +5,7 @@
 #include "mos6510.h"
 #include "memorycontroller.h"
 #include "vicii.h"
+#include "iocontroller.h"
 #include <stdio.h>
 
 bool g_setDebug = false;
@@ -63,10 +64,13 @@ int main(int argc, char **argv)
     MOS6510::MemoryController memoryController(rom);
     MOS6510::Cpu mos6510(memoryController);
     MOS6510::VICII vicii(&memoryController, cgrom);
+    MOS6510::IOController io(&memoryController);
     bool setDebug = false;
+    //mos6510.addBreakpoint(0xEA90);
     while(1) {
         mos6510.execute(setDebug);
         vicii.execute();
+        io.execute();
         if(setDebug) {
             g_setDebug = false;
         }

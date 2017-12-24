@@ -225,6 +225,7 @@ private:
     bool dbgLsbp(const std::vector<std::string>& args);
     bool dbgSeti(const std::vector<std::string>& args);
     bool dbgClri(const std::vector<std::string>& args);
+    bool dbgSreg(const std::vector<std::string>& args);
 
 public:
     Cpu(const Cpu& rhs);
