@@ -2,6 +2,7 @@
 #define INCLUDED_IO_CONTROLLER_H
 
 #include <stdint.h>
+#include <deque>
 
 namespace MOS6510 {
 
@@ -31,6 +32,15 @@ struct IOControllerRegisterFile {
     };
 };
 
+enum SerialState {
+    IDLE,
+    WAIT_FOR_COMMAND,
+    WAIT_FOR_SECONDARY_ADDR,
+    EOI,
+    LISTEN,
+    TALK
+};
+
 class IOController {
 private:
     IOControllerRegisterFile    m_CIA1Registers;
@@ -40,6 +50,10 @@ private:
     uint8_t                     m_serialByteOut;
     uint8_t                     m_serialBitOut;
     bool                        m_ackPending;
+    SerialState                 m_serialState;
+    uint8_t                     m_primaryAddress;
+    uint8_t                     m_secondaryAddress;
+    std::deque<uint8_t>         m_serialQueue;
 
 public:
     IOController(MemoryController *memPtr);

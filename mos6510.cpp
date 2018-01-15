@@ -520,14 +520,25 @@ void Cpu::execute(bool debugBreak)
     }
 
     if(m_debugMode || debugBreak || m_stepping) {
-        printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, S:0x%02X, SP:0x%03X\n",
+        char status[11];
+        snprintf(status, sizeof(status), "S:%c%c%c%c%c%c%c%c",
+                m_status.bits.carryFlag             ? 'C' : '.',
+                m_status.bits.zeroFlag              ? 'Z' : '.',
+                m_status.bits.interruptDisableFlag  ? 'I' : '.',
+                m_status.bits.decimalModeFlag       ? 'D' : '.',
+                m_status.bits.breakFlag             ? 'B' : '.',
+                m_status.bits.unusedFlag            ? '.' : '.',
+                m_status.bits.overflowFlag          ? 'O' : '.',
+                m_status.bits.negativeFlag          ? 'N' : '.');
+
+        printf("PC:0x%04X, OP:%7s, NEW PC:0x%04X, A:0x%02X, X:0x%02X, Y:0x%02X, %s, SP:0x%03X\n",
                 programCounter,
                 ocs.c_str(),
                 m_programCounter,
                 m_accumulator,
                 m_xIndex,
                 m_yIndex,
-                m_status.all,
+                status,
                 m_stackPointer);
 
         assert(programCounter != m_programCounter); // if these are equal we did nothing

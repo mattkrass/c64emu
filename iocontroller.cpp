@@ -90,7 +90,24 @@ void IOController::write(uint16_t addr, uint8_t data, uint16_t pc)
 
 void IOController::execute()
 {
-
+    if(SerialState::EOI == m_serialState) {
+        if(9 < m_serialBitOut) {
+            --m_serialBitOut;
+        } else if(9 == m_serialBitOut) {
+            if(0x80 & m_CIA2Registers.reg.dataPortA) {
+                printf("Changing data port A2 from 0x%02X to 0x%02X\n",
+                        m_CIA2Registers.reg.dataPortA, (m_CIA2Registers.reg.dataPortA & 0x7F));
+                m_CIA2Registers.reg.dataPortA &= 0x7F;
+                m_serialBitOut = 14;
+            } else {
+                printf("Changing data port A2 from 0x%02X to 0x%02X\n",
+                        m_CIA2Registers.reg.dataPortA, (m_CIA2Registers.reg.dataPortA | 0x80));
+                m_CIA2Registers.reg.dataPortA |= 0x80;
+                m_serialBitOut = 0;
+                m_serialState = SerialState::LISTEN;
+            }
+        }
+    }
 }
 
 void IOController::init()
@@ -101,6 +118,7 @@ void IOController::init()
     
     m_serialBitOut = 0;
     m_serialByteOut = 0;
+    m_serialState = SerialState::IDLE;
 }
 
 void IOController::setKeyDown(int key)
@@ -113,45 +131,197 @@ void IOController::setKeyUp(int key)
     m_matrix[(key / 8)] |= (1 << (key % 8));
 }
 
+static const char* getState(const SerialState state)
+{
+    switch(state) {
+        case SerialState::IDLE:                     return "IDLE";
+        case SerialState::WAIT_FOR_COMMAND:         return "WAIT_FOR_COMMAND";
+        case SerialState::WAIT_FOR_SECONDARY_ADDR:  return "WAIT_FOR_SECONDARY_ADDR";
+        case SerialState::EOI:                      return "EOI";
+        case SerialState::LISTEN:                   return "LISTEN";
+        case SerialState::TALK:                     return "TALK";
+    }
+
+    return "Unknown";
+}
+
 void IOController::serialEvent(uint8_t changed)
 {
     bool atn = (m_CIA2Registers.reg.dataPortA & 0x08);
     bool clk = (m_CIA2Registers.reg.dataPortA & 0x10);
     bool din = (m_CIA2Registers.reg.dataPortA & 0x80);
     bool dot = (m_CIA2Registers.reg.dataPortA & 0x20);
+    SerialState oldState = m_serialState;
+
+    switch(m_serialState) {
+        case SerialState::IDLE: {
+            if(atn && !clk) {
+                m_CIA2Registers.reg.dataPortA |= 0x80;
+                din = true;
+                printf("0 Bus ack.\n");
+                m_serialState = SerialState::WAIT_FOR_COMMAND;
+            }
+        } break;
+
+        case SerialState::WAIT_FOR_COMMAND: {
+            if((0x10 & changed) && !clk) {
+                printf("Clock up, bit = %d\n", dot);
+                m_serialByteOut >>= 1;
+                m_serialByteOut |= dot ? 0x00: 0x80;
+                ++m_serialBitOut;
+                if(8 == m_serialBitOut) {
+                    printf("Byte: 0x%02X\n", m_serialByteOut);
+                    if(0x20 & m_serialByteOut) { // listen
+                        m_serialState = SerialState::WAIT_FOR_SECONDARY_ADDR;
+                        m_CIA2Registers.reg.dataPortA &= 0x7F;
+                        din = false;
+                    }
+
+                    m_primaryAddress = m_serialByteOut & 0x1F;
+                }
+            }
+        } break;
+
+        case SerialState::WAIT_FOR_SECONDARY_ADDR: {
+            if((0x10 & changed) && !clk) {
+                if(8 == m_serialBitOut) {
+                    m_CIA2Registers.reg.dataPortA |= 0x80;
+                    din = true;
+                    printf("1 Bus ack.\n");
+                    m_serialBitOut = 0;
+                } else {
+                    printf("Clock up, bit = %d\n", !dot);
+                    m_serialByteOut >>= 1;
+                    m_serialByteOut |= dot ? 0x00: 0x80;
+                    ++m_serialBitOut;
+                    if(8 == m_serialBitOut) {
+                        printf("Byte: 0x%02X\n", m_serialByteOut);
+                        m_secondaryAddress = m_serialByteOut;
+                        m_serialState = SerialState::EOI;
+                        m_CIA2Registers.reg.dataPortA &= 0x7F;
+                        din = false;
+                    }
+                }
+            }
+        } break;
+
+        case SerialState::EOI: {
+            if((0x10 & changed) && !clk) {
+                if(8 == m_serialBitOut) {
+                    m_CIA2Registers.reg.dataPortA |= 0x80;
+                    din = true;
+                    printf("2 Bus ack.\n");
+                    m_serialBitOut = 14;
+                }
+            }
+        } break;
+
+        case SerialState::LISTEN: {
+            if((0x10 & changed) && !clk) {
+                if(8 == m_serialBitOut) {
+                    m_CIA2Registers.reg.dataPortA |= 0x80;
+                    din = true;
+                    printf("3 Bus ack.\n");
+                    m_serialBitOut = 0;
+                } else {
+                    m_CIA2Registers.reg.dataPortA |= 0x80;
+                    din = true;
+                    printf("Clock up, bit = %d\n", !dot);
+                    m_serialByteOut >>= 1;
+                    m_serialByteOut |= dot ? 0x00: 0x80;
+                    ++m_serialBitOut;
+                    if(8 == m_serialBitOut) {
+                        printf("Byte: 0x%02X\n", m_serialByteOut);
+                        m_CIA2Registers.reg.dataPortA &= 0x7F;
+                        din = false;
+                        if(atn) { // cmd
+                            if(0x3F == m_serialByteOut) { // UNLISTEN
+                                m_serialBitOut = 0;
+                                m_serialState = SerialState::IDLE;
+                                if(0xF0 == m_secondaryAddress) {
+                                    char *filename = (char*)calloc(
+                                            m_serialQueue.size() + 1,
+                                            sizeof(char));
+                                    uint8_t idx = 0;
+                                    while(m_serialQueue.size()) {
+                                        filename[idx++] = m_serialQueue.front();
+                                        m_serialQueue.pop_front();
+                                    }
+
+                                    printf("Device %d requested to open file '%s'\n",
+                                            m_primaryAddress,
+                                            filename);
+                                    free(filename);
+                                }
+                            }
+                        } else {
+                            m_serialQueue.push_back(m_serialByteOut);
+                        }
+                    }
+                }
+            }
+        } break;
+
+        case SerialState::TALK: {
+        } break;
+
+    }
+
+
+    printf("ATN is %s, ", atn ? "low" : "high");
+    printf("CLK is %s, ", clk ? "low" : "high");
+    printf("DIN is %s, ", din ? "low" : "high");
+    printf("DOT is %s, ", dot ? "low" : "high");
+    printf("STATE is %s", getState(m_serialState));
+    if(oldState != m_serialState) {
+        printf(" (was %s)", getState(oldState));
+    }
+    printf("\n-----------------------\n");
+}
+
+#if 0
+void IOController::serialEvent(uint8_t changed)
+{
+    bool atn = (m_CIA2Registers.reg.dataPortA & 0x08);
 
     if(0x08 & changed) {
-        printf("ATN is now %s\n", atn ? "low" : "high");
-        if(atn) {
-            m_ackPending = true;
+        m_ackPending = atn;
+        if(!atn) {
+            m_CIA2Registers.reg.dataPortA |= 0x80;
         }
     }
+
+    bool clk = (m_CIA2Registers.reg.dataPortA & 0x10);
+    bool din = (m_CIA2Registers.reg.dataPortA & 0x80);
+    bool dot = (m_CIA2Registers.reg.dataPortA & 0x20);
+
+    printf("ATN is %s, ", atn ? "low" : "high");
     printf("CLK is %s, ", clk ? "low" : "high");
     printf("DIN is %s, ", din ? "low" : "high");
     printf("DOT is %s\n", dot ? "low" : "high");
 
-    if(!clk) {
-        m_serialByteOut >>= 1;
-        if(!dot) {
-            m_serialByteOut |= 0x80;
-        }
+    if((0x10 & changed) && !clk) { // rising edge
+        if(!din && m_ackPending) {
+            m_CIA2Registers.reg.dataPortA |= 0x80;
+            m_ackPending = false;
+            printf("Bus ack.\n");
+        } else {
+            printf("Got bit %d: %d\n", m_serialBitOut++, !dot);
+            m_serialByteOut >>= 1;
+            if(!dot) {
+                m_serialByteOut |= 0x80;
+            }
 
-        printf("Fresh bit: %s, byte: 0x%02X\n", dot ? "0" : "1", m_serialByteOut);
-        
-        if(8 == ++m_serialBitOut) { // complete byte in buffer
-            printf("Got byte: 0x%02X\n", m_serialByteOut);
-            m_ackPending = true;
-            m_serialBitOut = 0;
-            m_serialByteOut = 0;
-            m_CIA2Registers.reg.dataPortA &= 0x7F;
+            if(8 == m_serialBitOut) {
+                printf("Received byte: 0x%02X\n", m_serialByteOut);
+                m_CIA2Registers.reg.dataPortA &= 0x7F;
+                m_ackPending = true;
+                m_serialBitOut = 0;
+            }
         }
     }
-
-    if(m_ackPending) { // waiting for bus
-        m_CIA2Registers.reg.dataPortA |= 0x80;
-        printf("Bus ACK.\n\n");
-        m_ackPending = false;
-    }
+    printf("-----------------------\n");
 }
+#endif
 
 }
