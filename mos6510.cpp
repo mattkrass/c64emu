@@ -260,14 +260,14 @@ void Cpu::execute(bool debugBreak)
 
     std::string ocs = "";
     switch (opcode) {
-        case ADC_abs: ocs = "ADC_abs"; adc(AddrMode::ABS);                break;
-        case ADC_abx: ocs = "ADC_abx"; adc(AddrMode::ABX);                break;
-        case ADC_aby: ocs = "ADC_aby"; adc(AddrMode::ABY);                break;
-        case ADC_imm: ocs = "ADC_imm"; adc(AddrMode::IMM);                break;
-        case ADC_izx: ocs = "ADC_izx"; adc(AddrMode::IZX);                break;
-        case ADC_izy: ocs = "ADC_izy"; adc(AddrMode::IZY);                break;
-        case ADC_zp:  ocs = "ADC_zp";  adc(AddrMode::ZP);                 break;
-        case ADC_zpx: ocs = "ADC_zpx"; adc(AddrMode::ZPX);                break;
+        case ADC_abs: ocs = "ADC_abs"; rmwAbs(&Cpu::adc);                   break;
+        case ADC_abx: ocs = "ADC_abx"; rmwAbsIdx(&Cpu::adc, m_xIndex);      break;
+        case ADC_aby: ocs = "ADC_aby"; rmwAbsIdx(&Cpu::adc, m_yIndex);      break;
+        case ADC_imm: ocs = "ADC_imm";                                      break;
+        case ADC_izx: ocs = "ADC_izx";                                      break;
+        case ADC_izy: ocs = "ADC_izy";                                      break;
+        case ADC_zp:  ocs = "ADC_zp";  rmwZeroPage(&Cpu::adc);              break;
+        case ADC_zpx: ocs = "ADC_zpx"; rmwZeroPageIdx(&Cpu::adc, m_xIndex); break;
         case AHX_aby: ocs = "AHX_aby"; break;
         case AHX_izy: ocs = "AHX_izy"; break;
         case ALR_imm: ocs = "ALR_imm"; break;
@@ -551,10 +551,510 @@ void Cpu::execute(bool debugBreak)
     }
 }
 
-void Cpu::adc(const AddrMode mode)
+// Immediate addressing (TBD)
+// Relative addressing
+// Zero page addressing
+void Cpu::rdZeroPage(opFunc& operation)
 {
-    uint8_t op = m_memory.read(computeAddress(mode));
-    uint16_t result = ((uint16_t)m_accumulator) + op + m_status.bits.carryFlag;
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // perform operation
+            m_operand = m_memory.read(m_instAddr);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::rmwZeroPage(opFunc& operation)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // read operand
+            m_operand = m_memory.read(m_instAddr);
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // dummy write and perform operation
+            m_memory.write(m_instAddr, m_operand, 0);
+            (this->*operation)();
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // write results
+            m_memory.write(m_instAddr, m_operand, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::wrZeroPage(const uint8_t val)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // perform operation
+            m_memory.write(m_instAddr, val, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+// Zero page indexed addressing
+void Cpu::rdZeroPageIdx(opFunc& operation, const uint8_t idx)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // dummy read from address and index it
+            m_memory.read(m_instAddr);
+            m_instAddr += idx;
+            m_instAddr &= 0xFF;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // perform operation
+            m_operand = m_memory.read(m_instAddr);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::rmwZeroPageIdx(opFunc& operation, const uint8_t idx)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // dummy read from address and index it
+            m_memory.read(m_instAddr);
+            m_instAddr += idx;
+            m_instAddr &= 0xFF;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // proper read
+            m_operand = m_memory.read(m_instAddr);
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // dummy write and perform operation
+            m_memory.write(m_instAddr, m_operand, 0);
+            (this->*operation)();
+            ++m_instructionState;
+        } break;
+        case 4: {
+            // proper write
+            m_memory.write(m_instAddr, m_operand, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::wrZeroPageIdx(const uint8_t val, const uint8_t idx)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // dummy read from address and index it
+            m_memory.read(m_instAddr);
+            m_instAddr += idx;
+            m_instAddr &= 0xFF;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // proper write
+            m_memory.write(m_instAddr, val, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+// Absolute addressing
+void Cpu::rdAbs(opFunc& operation)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch high-byte of address, increment PC
+            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // perform operation
+            m_operand = m_memory.read(m_instAddr);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::rmwAbs(opFunc operation)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch high-byte of address, increment PC
+            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // read operand
+            m_operand = m_memory.read(m_instAddr);
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // dummy write and perform operation
+            m_memory.write(m_instAddr, m_operand, 0);
+            (this->*operation)();
+            ++m_instructionState;
+        } break;
+        case 4: {
+            // write results
+            m_memory.write(m_instAddr, m_operand, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::wrAbs(const uint8_t val)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch high-byte of address, increment PC
+            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // perform operation
+            m_memory.write(m_instAddr, val, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::jmpAbs()
+{
+    switch(m_instructionState) {
+        case 0: {
+            // fetch pointer address low, increment PC
+            m_operand = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            m_programCounter = m_memory.read(m_programCounter) << 8;
+            m_programCounter |= m_operand;
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    }
+}
+
+// Absolute indexed addressing
+void Cpu::rdAbsIdx(opFunc& operation, const uint8_t idx)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch high-byte of address, add idx, increment PC
+            m_instAddr += idx;
+            m_instAddr &= 0xFF;
+            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // read from address and fix if needed
+            m_operand = m_memory.read(m_instAddr);
+            if(idx > (m_instAddr & 0xFF)) {
+                m_instAddr += 0x100;
+                ++m_instructionState;
+            } else {
+                // perform operation
+                m_operand = m_memory.read(m_instAddr);
+                (this->*operation)();
+                m_cpuState = CpuState::READ_NEXT_OPCODE;
+                m_instructionState = 0;
+            }
+        } break;
+        case 3: {
+            // perform operation
+            m_operand = m_memory.read(m_instAddr);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::rmwAbsIdx(opFunc& operation, const uint8_t idx)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch high-byte of address, add idx, increment PC
+            m_instAddr += idx;
+            m_instAddr &= 0xFF;
+            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // read from address and fix if needed
+            m_memory.read(m_instAddr);
+            if(idx > (m_instAddr & 0xFF)) {
+                m_instAddr += 0x100;
+            }
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // re-read from address
+            m_operand = m_memory.read(m_instAddr);
+            ++m_instructionState;
+        } break;
+        case 4: {
+            // dummy write and perform operation
+            m_memory.write(m_instAddr, m_operand, 0);
+            (this->*operation)();
+            ++m_instructionState;
+        } break;
+        case 5: {
+            // proper write
+            m_memory.write(m_instAddr, m_operand, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+void Cpu::wrAbsIdx(const uint8_t val, const uint8_t idx)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch high-byte of address, add idx, increment PC
+            m_instAddr += idx;
+            m_instAddr &= 0xFF;
+            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // read from address and fix if needed
+            m_memory.read(m_instAddr);
+            if(idx > (m_instAddr & 0xFF)) {
+                m_instAddr += 0x100;
+            }
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // proper write
+            m_memory.write(m_instAddr, val, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+// Indexed indirect addressing
+void Cpu::rdIdxInd(opFunc& operation)
+{
+    switch(m_instructionState) {
+        case 0: {
+            // fetch pointer address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // read from the address, add X to it
+            m_instAddr = m_memory.read(m_instAddr) + m_xIndex;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // fetch effective address low
+            m_operand = m_memory.read(m_instAddr++);
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // fetch effective address high
+            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr |= m_operand;
+            ++m_instructionState;
+        } break;
+        case 4: {
+            // read from effective address
+            m_operand = m_memory.read(m_instAddr);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    }
+}
+
+void Cpu::rmwIdxInd(opFunc& operation)
+{
+    switch(m_instructionState) {
+        case 0: {
+            // fetch pointer address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // read from the address, add X to it
+            m_instAddr = m_memory.read(m_instAddr) + m_xIndex;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // fetch effective address low
+            m_operand = m_memory.read(m_instAddr++);
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // fetch effective address high
+            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr |= m_operand;
+            ++m_instructionState;
+        } break;
+        case 4: {
+            // read from effective address
+            m_operand = m_memory.read(m_instAddr);
+            ++m_instructionState;
+        } break;
+        case 5: {
+            // write the value back to effective address, and do the operation on it
+            m_memory.write(m_instAddr, m_operand, 0);
+            (this->*operation)();
+            ++m_instructionState;
+        } break;
+        case 6: {
+            // write the new value to effective address
+            m_memory.write(m_instAddr, m_operand, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    }
+}
+
+void Cpu::wrIdxInd(const uint8_t val)
+{
+    switch(m_instructionState) {
+        case 0: {
+            // fetch pointer address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // read from the address, add X to it
+            m_instAddr = m_memory.read(m_instAddr) + m_xIndex;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            // fetch effective address low
+            m_operand = m_memory.read(m_instAddr++);
+            ++m_instructionState;
+        } break;
+        case 3: {
+            // fetch effective address high
+            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr |= m_operand;
+            ++m_instructionState;
+        } break;
+        case 4: {
+            // write to effective address
+            m_memory.write(m_instAddr, val, 0);
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    }
+}
+
+void Cpu::jmpInd()
+{
+    switch(m_instructionState) {
+        case 0: {
+            // fetch pointer address low, increment PC
+            m_operand = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // fetch pointer address high, increment PC
+            m_instAddr = m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= m_operand;
+            ++m_instructionState;
+        } break;
+        case 2: {
+            m_operand = m_memory.read(m_instAddr++);
+            ++m_instructionState;
+        } break;
+        case 3: {
+            m_programCounter = m_memory.read(m_instAddr) << 8;
+            m_programCounter |= m_operand;
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    }
+}  
+
+void Cpu::adc()
+{
+    uint16_t result = ((uint16_t)m_accumulator) + m_operand + m_status.bits.carryFlag;
     m_status.bits.carryFlag = (result > 0xFF);
     m_accumulator = result & 0xFF;
     m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
@@ -912,6 +1412,8 @@ void Cpu::init()
     m_cmdMap["seti"] = &Cpu::dbgSeti;
     m_cmdMap["clri"] = &Cpu::dbgClri;
     m_cmdMap["sreg"] = &Cpu::dbgSreg;
+
+    m_cpuState = CpuState::READ_NEXT_OPCODE;
 }
 
 uint16_t Cpu::computeAddress(const AddrMode mode)

@@ -140,12 +140,8 @@ enum Instructions
 };
 
 enum CpuState {
-    // TODO: fill these in!
-    // Read next instruction from memory at the PC (program counter)
-    // Process instruction
-    // Process Timers on CIA1 and CIA2 (not covered in this article)
-    // Update screen via VIC-II (not covered in this article)
-    // Calculate cycles (for emulators that aren’t cycle-exact)
+    READ_NEXT_OPCODE,
+    INSTRUCTION_IN_PROGRESS
 };
 
 class Cpu {
@@ -160,6 +156,11 @@ private:
     uint16_t                        m_videoTimer;
     uint16_t                        m_sysTimer;
     bool                            m_pendingIrq;
+    uint8_t                         m_instructionState;
+    CpuState                        m_cpuState;
+    uint16_t                        m_instAddr;
+    uint8_t                         m_operand;
+    typedef void (MOS6510::Cpu::* opFunc)();
 
     // debug state
     typedef bool (MOS6510::Cpu::* cmdFunc)(const std::vector<std::string>&);
@@ -169,8 +170,41 @@ private:
     uint16_t                        m_stepCount;
     bool                            m_stepping;
 
+    // Implied addressing (TBD)
+
+    // Immediate addressing
+    // Relative addressing
+    // Zero page addressing
+    void rdZeroPage(opFunc& operation);
+    void rmwZeroPage(opFunc& operation);
+    void wrZeroPage(const uint8_t val);
+
+    // Zero page indexed addressing
+    void rdZeroPageIdx(opFunc& operation, const uint8_t idx);
+    void rmwZeroPageIdx(opFunc& operation, const uint8_t idx);
+    void wrZeroPageIdx(const uint8_t val, const uint8_t idx);
+
+    // Absolute addressing
+    void rdAbs(opFunc& operation);
+    void rmwAbs(opFunc operation);
+    void wrAbs(const uint8_t val);
+    void jmpAbs();
+    
+    // Absolute indexed addressing
+    void rdAbsIdx(opFunc& operation, const uint8_t idx);
+    void rmwAbsIdx(opFunc& operation, const uint8_t idx);
+    void wrAbsIdx(const uint8_t val, const uint8_t idx);
+
+    // Indirect addressing
+    void jmpInd();
+
+    // Indexed indirect addressing
+    void rdIdxInd(opFunc& operation);
+    void rmwIdxInd(opFunc& operation);
+    void wrIdxInd(const uint8_t val);
+
     // internal operations 
-    void adc(const AddrMode mode);
+    void adc();
     void andi(const AddrMode mode);
     void asl(const AddrMode mode);
     void bit(const AddrMode mode);
