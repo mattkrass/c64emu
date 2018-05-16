@@ -170,37 +170,40 @@ private:
     uint16_t                        m_stepCount;
     bool                            m_stepping;
 
-    // Implied addressing (TBD)
+    // Implied addressing
+    void rdImp(opFunc operation);
 
     // Immediate addressing
+    void rdImm(opFunc operation);
+
     // Relative addressing
     // Zero page addressing
-    void rdZeroPage(opFunc& operation);
-    void rmwZeroPage(opFunc& operation);
+    void rdZeroPage(opFunc operation);
+    void rmwZeroPage(opFunc operation);
     void wrZeroPage(const uint8_t val);
 
     // Zero page indexed addressing
-    void rdZeroPageIdx(opFunc& operation, const uint8_t idx);
-    void rmwZeroPageIdx(opFunc& operation, const uint8_t idx);
+    void rdZeroPageIdx(opFunc operation, const uint8_t idx);
+    void rmwZeroPageIdx(opFunc operation, const uint8_t idx);
     void wrZeroPageIdx(const uint8_t val, const uint8_t idx);
 
     // Absolute addressing
-    void rdAbs(opFunc& operation);
+    void rdAbs(opFunc operation);
     void rmwAbs(opFunc operation);
     void wrAbs(const uint8_t val);
     void jmpAbs();
     
     // Absolute indexed addressing
-    void rdAbsIdx(opFunc& operation, const uint8_t idx);
-    void rmwAbsIdx(opFunc& operation, const uint8_t idx);
+    void rdAbsIdx(opFunc operation, const uint8_t idx);
+    void rmwAbsIdx(opFunc operation, const uint8_t idx);
     void wrAbsIdx(const uint8_t val, const uint8_t idx);
 
     // Indirect addressing
     void jmpInd();
 
     // Indexed indirect addressing
-    void rdIdxInd(opFunc& operation);
-    void rmwIdxInd(opFunc& operation);
+    void rdIdxInd(opFunc operation);
+    void rmwIdxInd(opFunc operation);
     void wrIdxInd(const uint8_t val);
 
     // internal operations 

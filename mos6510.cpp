@@ -260,13 +260,13 @@ void Cpu::execute(bool debugBreak)
 
     std::string ocs = "";
     switch (opcode) {
-        case ADC_abs: ocs = "ADC_abs"; rmwAbs(&Cpu::adc);                   break;
-        case ADC_abx: ocs = "ADC_abx"; rmwAbsIdx(&Cpu::adc, m_xIndex);      break;
-        case ADC_aby: ocs = "ADC_aby"; rmwAbsIdx(&Cpu::adc, m_yIndex);      break;
-        case ADC_imm: ocs = "ADC_imm";                                      break;
-        case ADC_izx: ocs = "ADC_izx";                                      break;
-        case ADC_izy: ocs = "ADC_izy";                                      break;
-        case ADC_zp:  ocs = "ADC_zp";  rmwZeroPage(&Cpu::adc);              break;
+        case ADC_abs: ocs = "ADC_abs"; rdAbs(&Cpu::adc);                    break;
+        case ADC_abx: ocs = "ADC_abx"; rdAbsIdx(&Cpu::adc, m_xIndex);       break;
+        case ADC_aby: ocs = "ADC_aby"; rdAbsIdx(&Cpu::adc, m_yIndex);       break;
+        case ADC_imm: ocs = "ADC_imm"; rdImm(&Cpu::adc);                    break;
+        case ADC_izx: ocs = "ADC_izx"; rdIdxInd(&Cpu::adc, m_xIndex);       break;
+        case ADC_izy: ocs = "ADC_izy"; rdIdxInd(&Cpu::adc, m_yIndex);       break;
+        case ADC_zp:  ocs = "ADC_zp "; rmwZeroPage(&Cpu::adc);              break;
         case ADC_zpx: ocs = "ADC_zpx"; rmwZeroPageIdx(&Cpu::adc, m_xIndex); break;
         case AHX_aby: ocs = "AHX_aby"; break;
         case AHX_izy: ocs = "AHX_izy"; break;
@@ -551,10 +551,47 @@ void Cpu::execute(bool debugBreak)
     }
 }
 
-// Immediate addressing (TBD)
+// Implied addressing
+void Cpu::rdImp(opFunc operation)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // perform operation
+            m_memory.read(m_programCounter);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
+// Immediate addressing
+void Cpu::rdImm(opFunc operation)
+{
+    switch (m_instructionState) {
+        case 0: {
+            // fetch low-byte of address, increment PC
+            m_instAddr = m_memory.read(m_programCounter++);
+            ++m_instructionState;
+        } break;
+        case 1: {
+            // perform operation
+            m_operand = m_memory.read(m_programCounter++);
+            (this->*operation)();
+            m_cpuState = CpuState::READ_NEXT_OPCODE;
+            m_instructionState = 0;
+        } break;
+    };
+}
+
 // Relative addressing
 // Zero page addressing
-void Cpu::rdZeroPage(opFunc& operation)
+void Cpu::rdZeroPage(opFunc operation)
 {
     switch (m_instructionState) {
         case 0: {
@@ -572,7 +609,7 @@ void Cpu::rdZeroPage(opFunc& operation)
     };
 }
 
-void Cpu::rmwZeroPage(opFunc& operation)
+void Cpu::rmwZeroPage(opFunc operation)
 {
     switch (m_instructionState) {
         case 0: {
@@ -618,7 +655,7 @@ void Cpu::wrZeroPage(const uint8_t val)
 }
 
 // Zero page indexed addressing
-void Cpu::rdZeroPageIdx(opFunc& operation, const uint8_t idx)
+void Cpu::rdZeroPageIdx(opFunc operation, const uint8_t idx)
 {
     switch (m_instructionState) {
         case 0: {
@@ -643,7 +680,7 @@ void Cpu::rdZeroPageIdx(opFunc& operation, const uint8_t idx)
     };
 }
 
-void Cpu::rmwZeroPageIdx(opFunc& operation, const uint8_t idx)
+void Cpu::rmwZeroPageIdx(opFunc operation, const uint8_t idx)
 {
     switch (m_instructionState) {
         case 0: {
@@ -703,7 +740,7 @@ void Cpu::wrZeroPageIdx(const uint8_t val, const uint8_t idx)
 }
 
 // Absolute addressing
-void Cpu::rdAbs(opFunc& operation)
+void Cpu::rdAbs(opFunc operation)
 {
     switch (m_instructionState) {
         case 0: {
@@ -799,7 +836,7 @@ void Cpu::jmpAbs()
 }
 
 // Absolute indexed addressing
-void Cpu::rdAbsIdx(opFunc& operation, const uint8_t idx)
+void Cpu::rdAbsIdx(opFunc operation, const uint8_t idx)
 {
     switch (m_instructionState) {
         case 0: {
@@ -838,7 +875,7 @@ void Cpu::rdAbsIdx(opFunc& operation, const uint8_t idx)
     };
 }
 
-void Cpu::rmwAbsIdx(opFunc& operation, const uint8_t idx)
+void Cpu::rmwAbsIdx(opFunc operation, const uint8_t idx)
 {
     switch (m_instructionState) {
         case 0: {
@@ -914,7 +951,7 @@ void Cpu::wrAbsIdx(const uint8_t val, const uint8_t idx)
 }
 
 // Indexed indirect addressing
-void Cpu::rdIdxInd(opFunc& operation)
+void Cpu::rdIdxInd(opFunc operation)
 {
     switch(m_instructionState) {
         case 0: {
@@ -948,7 +985,7 @@ void Cpu::rdIdxInd(opFunc& operation)
     }
 }
 
-void Cpu::rmwIdxInd(opFunc& operation)
+void Cpu::rmwIdxInd(opFunc operation)
 {
     switch(m_instructionState) {
         case 0: {
