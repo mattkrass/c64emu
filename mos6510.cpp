@@ -264,8 +264,8 @@ void Cpu::execute(bool debugBreak)
         case ADC_abx: ocs = "ADC_abx"; rdAbsIdx(&Cpu::adc, m_xIndex);       break;
         case ADC_aby: ocs = "ADC_aby"; rdAbsIdx(&Cpu::adc, m_yIndex);       break;
         case ADC_imm: ocs = "ADC_imm"; rdImm(&Cpu::adc);                    break;
-        case ADC_izx: ocs = "ADC_izx"; rdIdxInd(&Cpu::adc, m_xIndex);       break;
-        case ADC_izy: ocs = "ADC_izy"; rdIdxInd(&Cpu::adc, m_yIndex);       break;
+        case ADC_izx: ocs = "ADC_izx"; rdIdxInd(&Cpu::adc);                 break;
+        case ADC_izy: ocs = "ADC_izy"; rdIdxInd(&Cpu::adc);                 break;
         case ADC_zp:  ocs = "ADC_zp "; rmwZeroPage(&Cpu::adc);              break;
         case ADC_zpx: ocs = "ADC_zpx"; rmwZeroPageIdx(&Cpu::adc, m_xIndex); break;
         case AHX_aby: ocs = "AHX_aby"; break;
