@@ -6,8 +6,12 @@
 namespace MOS6510 {
 MemoryController::MemoryController(uint8_t *rom)
 {
+    m_sram = new uint8_t[65536];
+    m_rom = new uint8_t[16384];
+    assert(m_sram);
+    assert(m_rom);
     assert(0 != rom);
-    memcpy(&m_rom, rom, 16384);
+    memcpy(m_rom, rom, 16384);
     for(size_t i = 0; i < 65536; ++i) {
         m_sram[i] = 1;
     }

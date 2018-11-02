@@ -13,6 +13,8 @@ void sig_callback(int signum)
 {
     if(SIGTSTP == signum) {
         g_setDebug = true;
+    } else {
+        exit(0);
     }
 }
 
@@ -35,7 +37,7 @@ int main(int argc, char **argv)
             argv[1],
             std::ifstream::binary);
 
-    uint8_t rom[16384];
+    uint8_t *rom = new uint8_t[16384];
     romFile.read((char *)rom, 0x4000); // Read BASIC/KERNAL in to buffer
     if(0x4000 != romFile.gcount()) {
         std::cerr << "Failed to read full ROM! Only got "
@@ -50,7 +52,7 @@ int main(int argc, char **argv)
             "characters.901225-01.bin",
             std::ifstream::binary);
 
-    uint8_t cgrom[4096];
+    uint8_t *cgrom = new uint8_t[4096];
     cgromFile.read((char *)cgrom, 0x1000); // Read CGROM in to buffer
     if(0x1000 != cgromFile.gcount()) {
         std::cerr << "Failed to read full CGROM! Only got "
@@ -60,6 +62,7 @@ int main(int argc, char **argv)
     }
 
     signal(SIGTSTP, sig_callback);
+    signal(SIGINT, sig_callback);
 
     MOS6510::MemoryController memoryController(rom);
     MOS6510::Cpu mos6510(memoryController);

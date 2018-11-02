@@ -13,8 +13,8 @@ enum BankControlSignals {
 
 class MemoryController {
 private:
-    uint8_t         m_sram[65536];
-    uint8_t         m_rom[16384];
+    uint8_t*        m_sram;
+    uint8_t*        m_rom;
     uint8_t         m_scanIdx;
     VICII*          m_vicPtr;
     IOController*   m_ioPtr;

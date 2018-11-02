@@ -146,32 +146,64 @@ enum CpuState {
 
 class Cpu {
 private:
+    uint16_t                        canary1;
     uint16_t                        m_programCounter;
+    uint16_t                        canary2;
     uint16_t                        m_stackPointer;
+    uint16_t                        canary3;
     uint8_t                         m_accumulator;
+    uint16_t                        canary4;
     uint8_t                         m_xIndex;
+    uint16_t                        canary5;
     uint8_t                         m_yIndex;
+    uint16_t                        canary6;
     StatusRegister                  m_status;
+    uint16_t                        canary7;
     MemoryController&               m_memory;
+    uint16_t                        canary8;
     uint16_t                        m_videoTimer;
+    uint16_t                        canary9;
     uint16_t                        m_sysTimer;
+    uint16_t                        canary10;
     bool                            m_pendingIrq;
+    uint16_t                        canary11;
     uint8_t                         m_instructionState;
+    uint16_t                        canary12;
     CpuState                        m_cpuState;
+    uint16_t                        canary13;
     uint16_t                        m_instAddr;
+    uint16_t                        canary14;
     uint8_t                         m_operand;
+    uint16_t                        canary15;
+    uint8_t                         m_opcode;
+    uint16_t                        canary16;
+    uint16_t                        m_opcodeReadFrom;
+    uint16_t                        canary17;
+    std::string                     m_opcodeStr;
+    uint16_t                        canary18;
+    uint32_t                        m_totalCycleCount;
+    uint16_t                        canary19;
+    std::deque<uint16_t>            m_opcodeHistory;
+    uint16_t                        canary20;
+
     typedef void (MOS6510::Cpu::* opFunc)();
 
     // debug state
     typedef bool (MOS6510::Cpu::* cmdFunc)(const std::vector<std::string>&);
     bool                            m_debugMode;
+    uint16_t                        canary21;
     std::set<uint16_t>              m_breakpointSet;
+    uint16_t                        canary22;
     std::map<std::string, cmdFunc>  m_cmdMap;
+    uint16_t                        canary23;
     uint16_t                        m_stepCount;
+    uint16_t                        canary24;
     bool                            m_stepping;
 
     // Implied addressing
     void rdImp(opFunc operation);
+    void rmwImp(opFunc operation);
+    void wrImp(const uint8_t val);
 
     // Immediate addressing
     void rdImm(opFunc operation);
@@ -206,49 +238,65 @@ private:
     void rmwIdxInd(opFunc operation);
     void wrIdxInd(const uint8_t val);
 
+    // Indirect indexed addressing
+    void rdIndIdx(opFunc operation);
+    void rmwIndIdx(opFunc operation);
+    void wrIndIdx(const uint8_t val);
+
     // internal operations 
     void adc();
-    void andi(const AddrMode mode);
-    void asl(const AddrMode mode);
-    void bit(const AddrMode mode);
+    void andi();
+    void asl();
+    void bit();
     void br(uint8_t flag, uint8_t condition);
     void clc();
     void cld();
     void cli();
     void clv();
-    void cmp(uint8_t r, const AddrMode mode);
-    void dec(const AddrMode mode);
-    void der(uint8_t& r);
-    void eor(const AddrMode mode);
-    void inc(const AddrMode mode);
-    void inr(uint8_t& r);
+    void cmp();
+    void cpy();
+    void cpx();
+    void dec();
+    void dex();
+    void dey();
+    void eor();
+    void inc();
+    void inx();
+    void iny();
     void isr();
-    void jmp(const AddrMode mode);
+    void jmp();
     void jsr();
-    void ldr(uint8_t & r, const AddrMode mode);
-    void lsr(const AddrMode mode);
+    void lda();
+    void ldx();
+    void ldy();
+    void lsr();
     void nop();
-    void ora(const AddrMode mode);
+    void ora();
     void pha();
     void php();
     void pla();
     void plp();
-    void rol(const AddrMode mode);
-    void ror(const AddrMode mode);
+    void rol();
+    void ror();
     void rti();
     void rts();
-    void sbc(const AddrMode mode);
+    void sbc();
     void sec();
     void sed();
     void sei();
-    void str(const uint8_t &r, const AddrMode mode);
-    void tsd(const uint8_t &src, uint8_t &dst);
+    void sta();
+    void stx();
+    void sty();
+    void tax();
+    void tay();
     void tsx();
+    void txa();
     void txs();
+    void tya();
 
     // utility
     void init();
-    uint16_t computeAddress(const AddrMode mode);
+    uint16_t computeAddress();
     void redrawScreen();
 
     // debug functions
@@ -263,6 +311,7 @@ private:
     bool dbgSeti(const std::vector<std::string>& args);
     bool dbgClri(const std::vector<std::string>& args);
     bool dbgSreg(const std::vector<std::string>& args);
+    bool dbgPstk(const std::vector<std::string>& args);
 
 public:
     Cpu(const Cpu& rhs);
@@ -275,6 +324,8 @@ public:
 
     void execute(bool debugBreak);
     MemoryController& getMemory();
+    std::string decodeInstruction(uint16_t addr);
+    void printStack();
 };
 }
 #endif // INCLUDED_MOS6510
