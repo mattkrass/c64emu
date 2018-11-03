@@ -1204,33 +1204,55 @@ void Cpu::rmwIndIdx(opFunc operation)
 
 void Cpu::wrIndIdx(const uint8_t val)
 {
+    bool debug = m_opcodeReadFrom == 0xEA0C;
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
             m_instAddr = m_memory.read(m_programCounter++);
+            if(debug) {
+                printf("0: m_instAddr = 0x%04X\n", m_instAddr);
+            }
             ++m_instructionState;
         } break;
         case 1: {
             // fetch effective address low
             m_operand = m_memory.read(m_instAddr++);
+            if(debug) {
+                printf("1: m_operand = 0x%02X, m_instAddr = 0x%04X\n", m_operand, m_instAddr);
+            }
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address high and add Y to the low byte
             m_instAddr = m_memory.read(m_instAddr) << 8;
-            m_instAddr |= (m_operand + m_yIndex);
+            if(debug) {
+                printf("2a: m_instAddr = 0x%02X\n", m_instAddr);
+            }
+            m_instAddr |= ((m_operand + m_yIndex) & 0xFF);
+            if(debug) {
+                printf("2b: m_instAddr = 0x%04X\n", m_instAddr);
+            }
             ++m_instructionState;
         } break;
         case 3: {
             // read from address and fix if needed
             m_operand = m_memory.read(m_instAddr);
+            if(debug) {
+                printf("3a: m_operand = 0x%02X, m_instAddr = 0x%04X\n", m_operand, m_instAddr);
+            }
             if(m_yIndex > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
+            }
+            if(debug) {
+                printf("3b: m_operand = 0x%02X, m_instAddr = 0x%04X\n", m_operand, m_instAddr);
             }
             ++m_instructionState;
         } break;
         case 4: {
             // write to effective address
+            if(debug) {
+                printf("4: val = 0x%02X, m_instAddr = 0x%04X\n", val, m_instAddr);
+            }
             m_memory.write(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -1299,43 +1321,23 @@ void Cpu::bit()
 
 void Cpu::br(uint8_t flag, uint8_t condition)
 {
-    bool debug = (m_totalCycleCount > 605949);
-    int8_t signedOperand;
     switch(m_instructionState) {
         case 0: {
             // fetch relative jump offset operand
             m_operand = m_memory.read(m_programCounter++);
-            signedOperand = (int8_t)m_operand;
-            if(debug) {
-                printf("m_operand = %u, signedOperand = %d\n", m_operand, signedOperand);
-            }
             ++m_instructionState;
         } break;
         case 1: {
-            if(debug) {
-                printf("flag = %u, condition = %u\n", flag, condition);
-            }
             if(flag == condition) {
-                if(debug) {
-                    printf("m_programCounter before = %04X, m_operand = %02X, signedOperand = %02X\n", m_programCounter, m_operand, signedOperand);
-                }
+                int8_t signedOperand = (int8_t)m_operand;
                 m_programCounter += signedOperand;
-                if(debug) {
-                    printf("m_programCounter after  = %04X, m_operand = %02X, signedOperand = %02X\n", m_programCounter, m_operand, signedOperand);
-                }
                 ++m_instructionState;
             } else {
-                if(debug) {
-                    printf("in first exit\n");
-                }
                 m_cpuState = CpuState::READ_NEXT_OPCODE;
                 m_instructionState = 0;
             }
         } break;
         case 2: {
-            if(debug) {
-                printf("in second exit\n");
-            }
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
