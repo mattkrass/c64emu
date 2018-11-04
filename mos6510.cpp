@@ -172,10 +172,48 @@ bool Cpu::dbgBrkd(const std::vector<std::string>& args)
     return true; // stay in debug
 }
 
+bool Cpu::dbgMema(const std::vector<std::string>& args)
+{
+    uint16_t addr = 0;
+    if(2 > args.size()) {
+        std::cout << "mema <address>" << std::endl;
+    } else {
+        addr = parseString(args[1]);
+    }
+
+    addMemWatch(addr);
+
+    return true; // stay in debug
+}
+
+bool Cpu::dbgMemd(const std::vector<std::string>& args)
+{
+    uint16_t addr = 0;
+    if(2 > args.size()) {
+        std::cout << "memd <address>" << std::endl;
+    } else {
+        addr = parseString(args[1]);
+    }
+
+    removeMemWatch(addr);
+
+    return true; // stay in debug
+}
+
 bool Cpu::dbgLsbp(const std::vector<std::string>& args)
 {
     std::set<uint16_t>::const_iterator it = m_breakpointSet.cbegin();
     for(int idx = 0; it != m_breakpointSet.cend(); ++it, ++idx) {
+        printf("%d: 0x%04X\n", idx, *it);
+    }
+
+    return true; // stay in debug
+}
+
+bool Cpu::dbgLsmw(const std::vector<std::string>& args)
+{
+    std::set<uint16_t>::const_iterator it = m_memWatchSet.cbegin();
+    for(int idx = 0; it != m_memWatchSet.cend(); ++it, ++idx) {
         printf("%d: 0x%04X\n", idx, *it);
     }
 
@@ -240,38 +278,14 @@ void Cpu::execute(bool debugBreak)
             isr();
         }
 
-        assert(canary1  == 0xAAAA);
-        assert(canary2  == 0xAAAA);
-        assert(canary3  == 0xAAAA);
-        assert(canary4  == 0xAAAA);
-        assert(canary5  == 0xAAAA);
-        assert(canary6  == 0xAAAA);
-        assert(canary7  == 0xAAAA);
-        assert(canary8  == 0xAAAA);
-        assert(canary9  == 0xAAAA);
-        assert(canary10 == 0xAAAA);
-        assert(canary11 == 0xAAAA);
-        assert(canary12 == 0xAAAA);
-        assert(canary13 == 0xAAAA);
-        assert(canary14 == 0xAAAA);
-        assert(canary15 == 0xAAAA);
-        assert(canary16 == 0xAAAA);
-        assert(canary17 == 0xAAAA);
-        assert(canary18 == 0xAAAA);
-        assert(canary19 == 0xAAAA);
-        assert(canary20 == 0xAAAA);
-        assert(canary21 == 0xAAAA);
-        assert(canary22 == 0xAAAA);
-        assert(canary23 == 0xAAAA);
-        assert(canary24 == 0xAAAA);
         ///assert(m_programCounter > 0x4000);
-        m_opcode = m_memory.read(m_programCounter);
+        m_opcode = memRead(m_programCounter);
         m_opcodeReadFrom = m_programCounter;
         m_opcodeHistory.push_back(m_opcodeReadFrom);
         while(m_opcodeHistory.size() > 100) {
             m_opcodeHistory.pop_front();
         }
-        if(m_debugMode || debugBreak || m_stepping) {
+        if(m_debugMode || debugBreak || m_stepping || m_memoryWatched) {
             if(m_stepCount) {
                 --m_stepCount;
             }
@@ -309,6 +323,9 @@ void Cpu::execute(bool debugBreak)
                     printf(">>>>>>>>>> Finished step count at 0x%04X <<<<<<<<<<\n", m_programCounter);
                     debugPrompt();
                 }
+            } else if(m_memoryWatched) {
+                printf(">>>>>>>>>> Stopped at 0x%04X after memory write <<<<<<<<<<\n", m_programCounter);
+                debugPrompt();
             }
 
             if(m_stepping && !m_stepCount) {
@@ -320,8 +337,12 @@ void Cpu::execute(bool debugBreak)
         m_cpuState = INSTRUCTION_IN_PROGRESS;
     } else {
         if(debugBreak) {
-            m_debugMode = true;
-            printf("Current executing %02X opcode from 0x%04X, state = %d\n", m_opcode, m_opcodeReadFrom, m_instructionState);
+            if(!m_stepping) {
+                m_stepCount = 1;
+                m_stepping = true;
+            }
+            printf("Current executing %02X opcode from 0x%04X, state = %d\n",
+                m_opcode, m_opcodeReadFrom, m_instructionState);
             for(size_t idx = 0; idx < m_opcodeHistory.size() && idx < 10; ++idx) {
                 printf("%02lu: 0x%04X\n", idx, m_opcodeHistory.at(m_opcodeHistory.size() - idx - 1));
             }
@@ -598,7 +619,7 @@ void Cpu::execute(bool debugBreak)
 void Cpu::rdImp(opFunc operation)
 {
     // perform operation
-    m_memory.read(m_programCounter);
+    memRead(m_programCounter);
     (this->*operation)();
     m_cpuState = CpuState::READ_NEXT_OPCODE;
     m_instructionState = 0;
@@ -607,7 +628,7 @@ void Cpu::rdImp(opFunc operation)
 void Cpu::rmwImp(opFunc operation)
 {
     // perform operation
-    m_memory.read(m_programCounter);
+    memRead(m_programCounter);
     m_operand = m_accumulator;
     (this->*operation)();
     m_accumulator = m_operand;
@@ -618,7 +639,7 @@ void Cpu::rmwImp(opFunc operation)
 void Cpu::wrImp(const uint8_t val)
 {
     // perform operation
-    m_memory.read(m_programCounter);
+    memRead(m_programCounter);
     m_accumulator = val;
     m_cpuState = CpuState::READ_NEXT_OPCODE;
     m_instructionState = 0;
@@ -630,7 +651,7 @@ void Cpu::rdImm(opFunc operation)
     switch (m_instructionState) {
         case 0: {
             // perform operation
-            m_operand = m_memory.read(m_programCounter++);
+            m_operand = memRead(m_programCounter++);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -645,12 +666,12 @@ void Cpu::rdZeroPage(opFunc operation)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // perform operation
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -663,23 +684,23 @@ void Cpu::rmwZeroPage(opFunc operation)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // read operand
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             ++m_instructionState;
         } break;
         case 2: {
             // dummy write and perform operation
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             (this->*operation)();
             ++m_instructionState;
         } break;
         case 3: {
             // write results
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -691,12 +712,12 @@ void Cpu::wrZeroPage(const uint8_t val)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // perform operation
-            m_memory.write(m_instAddr, val, 0);
+            memWrite(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -709,19 +730,19 @@ void Cpu::rdZeroPageIdx(opFunc operation, const uint8_t idx)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // dummy read from address and index it
-            m_memory.read(m_instAddr);
+            memRead(m_instAddr);
             m_instAddr += idx;
             m_instAddr &= 0xFF;
             ++m_instructionState;
         } break;
         case 2: {
             // perform operation
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -734,30 +755,30 @@ void Cpu::rmwZeroPageIdx(opFunc operation, const uint8_t idx)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // dummy read from address and index it
-            m_memory.read(m_instAddr);
+            memRead(m_instAddr);
             m_instAddr += idx;
             m_instAddr &= 0xFF;
             ++m_instructionState;
         } break;
         case 2: {
             // proper read
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             ++m_instructionState;
         } break;
         case 3: {
             // dummy write and perform operation
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             (this->*operation)();
             ++m_instructionState;
         } break;
         case 4: {
             // proper write
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -769,19 +790,19 @@ void Cpu::wrZeroPageIdx(const uint8_t val, const uint8_t idx)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // dummy read from address and index it
-            m_memory.read(m_instAddr);
+            memRead(m_instAddr);
             m_instAddr += idx;
             m_instAddr &= 0xFF;
             ++m_instructionState;
         } break;
         case 2: {
             // proper write
-            m_memory.write(m_instAddr, val, 0);
+            memWrite(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -794,17 +815,17 @@ void Cpu::rdAbs(opFunc operation)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch high-byte of address, increment PC
-            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= memRead(m_programCounter++) << 8;
             ++m_instructionState;
         } break;
         case 2: {
             // perform operation
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -817,28 +838,28 @@ void Cpu::rmwAbs(opFunc operation)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch high-byte of address, increment PC
-            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= memRead(m_programCounter++) << 8;
             ++m_instructionState;
         } break;
         case 2: {
             // read operand
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             ++m_instructionState;
         } break;
         case 3: {
             // dummy write and perform operation
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             (this->*operation)();
             ++m_instructionState;
         } break;
         case 4: {
             // write results
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -850,17 +871,17 @@ void Cpu::wrAbs(const uint8_t val)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch high-byte of address, increment PC
-            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= memRead(m_programCounter++) << 8;
             ++m_instructionState;
         } break;
         case 2: {
             // perform operation
-            m_memory.write(m_instAddr, val, 0);
+            memWrite(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -872,11 +893,11 @@ void Cpu::jmpAbs()
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address low, increment PC
-            m_operand = m_memory.read(m_programCounter++);
+            m_operand = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
-            m_programCounter = m_memory.read(m_programCounter) << 8;
+            m_programCounter = memRead(m_programCounter) << 8;
             m_programCounter |= m_operand;
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -890,25 +911,25 @@ void Cpu::rdAbsIdx(opFunc operation, const uint8_t idx)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch high-byte of address, add idx, increment PC
             m_instAddr += idx;
             m_instAddr &= 0xFF;
-            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= memRead(m_programCounter++) << 8;
             ++m_instructionState;
         } break;
         case 2: {
             // read from address and fix if needed
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             if(idx > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
                 ++m_instructionState;
             } else {
                 // perform operation
-                m_operand = m_memory.read(m_instAddr);
+                m_operand = memRead(m_instAddr);
                 (this->*operation)();
                 m_cpuState = CpuState::READ_NEXT_OPCODE;
                 m_instructionState = 0;
@@ -916,7 +937,7 @@ void Cpu::rdAbsIdx(opFunc operation, const uint8_t idx)
         } break;
         case 3: {
             // perform operation
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -929,19 +950,19 @@ void Cpu::rmwAbsIdx(opFunc operation, const uint8_t idx)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch high-byte of address, add idx, increment PC
             m_instAddr += idx;
             m_instAddr &= 0xFF;
-            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= memRead(m_programCounter++) << 8;
             ++m_instructionState;
         } break;
         case 2: {
             // read from address and fix if needed
-            m_memory.read(m_instAddr);
+            memRead(m_instAddr);
             if(idx > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
             }
@@ -949,18 +970,18 @@ void Cpu::rmwAbsIdx(opFunc operation, const uint8_t idx)
         } break;
         case 3: {
             // re-read from address
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             ++m_instructionState;
         } break;
         case 4: {
             // dummy write and perform operation
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             (this->*operation)();
             ++m_instructionState;
         } break;
         case 5: {
             // proper write
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -972,19 +993,19 @@ void Cpu::wrAbsIdx(const uint8_t val, const uint8_t idx)
     switch (m_instructionState) {
         case 0: {
             // fetch low-byte of address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch high-byte of address, add idx, increment PC
             m_instAddr += idx;
             m_instAddr &= 0xFF;
-            m_instAddr |= m_memory.read(m_programCounter++) << 8;
+            m_instAddr |= memRead(m_programCounter++) << 8;
             ++m_instructionState;
         } break;
         case 2: {
             // read from address and fix if needed
-            m_memory.read(m_instAddr);
+            memRead(m_instAddr);
             if(idx > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
             }
@@ -992,7 +1013,7 @@ void Cpu::wrAbsIdx(const uint8_t val, const uint8_t idx)
         } break;
         case 3: {
             // proper write
-            m_memory.write(m_instAddr, val, 0);
+            memWrite(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -1005,28 +1026,28 @@ void Cpu::rdIdxInd(opFunc operation)
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // read from the address, add X to it
-            m_instAddr = m_memory.read(m_instAddr) + m_xIndex;
+            m_instAddr = memRead(m_instAddr) + m_xIndex;
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address low
-            m_operand = m_memory.read(m_instAddr++);
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 3: {
             // fetch effective address high
-            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr = memRead(m_instAddr) << 8;
             m_instAddr |= m_operand;
             ++m_instructionState;
         } break;
         case 4: {
             // read from effective address
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -1039,39 +1060,39 @@ void Cpu::rmwIdxInd(opFunc operation)
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // read from the address, add X to it
-            m_instAddr = m_memory.read(m_instAddr) + m_xIndex;
+            m_instAddr = memRead(m_instAddr) + m_xIndex;
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address low
-            m_operand = m_memory.read(m_instAddr++);
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 3: {
             // fetch effective address high
-            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr = memRead(m_instAddr) << 8;
             m_instAddr |= m_operand;
             ++m_instructionState;
         } break;
         case 4: {
             // read from effective address
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             ++m_instructionState;
         } break;
         case 5: {
             // write the value back to effective address, and do the operation on it
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             (this->*operation)();
             ++m_instructionState;
         } break;
         case 6: {
             // write the new value to effective address
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -1083,28 +1104,28 @@ void Cpu::wrIdxInd(const uint8_t val)
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // read from the address, add X to it
-            m_instAddr = m_memory.read(m_instAddr) + m_xIndex;
+            m_instAddr = memRead(m_instAddr) + m_xIndex;
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address low
-            m_operand = m_memory.read(m_instAddr++);
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 3: {
             // fetch effective address high
-            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr = memRead(m_instAddr) << 8;
             m_instAddr |= m_operand;
             ++m_instructionState;
         } break;
         case 4: {
             // write to effective address
-            m_memory.write(m_instAddr, val, 0);
+            memWrite(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -1117,29 +1138,29 @@ void Cpu::rdIndIdx(opFunc operation)
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch effective address low
-            m_operand = m_memory.read(m_instAddr++);
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address high and add Y to the low byte
-            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr = memRead(m_instAddr) << 8;
             m_instAddr |= (m_operand + m_yIndex);
             ++m_instructionState;
         } break;
         case 3: {
             // read from address and fix if needed
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             if(m_yIndex > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
                 ++m_instructionState;
             } else {
                 // perform operation
-                m_operand = m_memory.read(m_instAddr);
+                m_operand = memRead(m_instAddr);
                 (this->*operation)();
                 m_cpuState = CpuState::READ_NEXT_OPCODE;
                 m_instructionState = 0;
@@ -1147,7 +1168,7 @@ void Cpu::rdIndIdx(opFunc operation)
         } break;
         case 4: {
             // read from effective address
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             (this->*operation)();
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -1160,23 +1181,23 @@ void Cpu::rmwIndIdx(opFunc operation)
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch effective address low
-            m_operand = m_memory.read(m_instAddr++);
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address high and add Y to the low byte
-            m_instAddr = m_memory.read(m_instAddr) << 8;
+            m_instAddr = memRead(m_instAddr) << 8;
             m_instAddr |= (m_operand + m_yIndex);
             ++m_instructionState;
         } break;
         case 3: {
             // read from address and fix if needed
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             if(m_yIndex > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
             }
@@ -1184,18 +1205,18 @@ void Cpu::rmwIndIdx(opFunc operation)
         } break;
         case 4: {
             // read from effective address
-            m_operand = m_memory.read(m_instAddr);
+            m_operand = memRead(m_instAddr);
             ++m_instructionState;
         } break;
         case 5: {
             // write the value back to effective address, and do the operation on it
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             (this->*operation)();
             ++m_instructionState;
         } break;
         case 6: {
             // write the new value to effective address
-            m_memory.write(m_instAddr, m_operand, 0);
+            memWrite(m_instAddr, m_operand, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -1204,56 +1225,34 @@ void Cpu::rmwIndIdx(opFunc operation)
 
 void Cpu::wrIndIdx(const uint8_t val)
 {
-    bool debug = m_opcodeReadFrom == 0xEA0C;
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address, increment PC
-            m_instAddr = m_memory.read(m_programCounter++);
-            if(debug) {
-                printf("0: m_instAddr = 0x%04X\n", m_instAddr);
-            }
+            m_instAddr = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch effective address low
-            m_operand = m_memory.read(m_instAddr++);
-            if(debug) {
-                printf("1: m_operand = 0x%02X, m_instAddr = 0x%04X\n", m_operand, m_instAddr);
-            }
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 2: {
             // fetch effective address high and add Y to the low byte
-            m_instAddr = m_memory.read(m_instAddr) << 8;
-            if(debug) {
-                printf("2a: m_instAddr = 0x%02X\n", m_instAddr);
-            }
+            m_instAddr = memRead(m_instAddr) << 8;
             m_instAddr |= ((m_operand + m_yIndex) & 0xFF);
-            if(debug) {
-                printf("2b: m_instAddr = 0x%04X\n", m_instAddr);
-            }
             ++m_instructionState;
         } break;
         case 3: {
             // read from address and fix if needed
-            m_operand = m_memory.read(m_instAddr);
-            if(debug) {
-                printf("3a: m_operand = 0x%02X, m_instAddr = 0x%04X\n", m_operand, m_instAddr);
-            }
+            m_operand = memRead(m_instAddr);
             if(m_yIndex > (m_instAddr & 0xFF)) {
                 m_instAddr += 0x100;
-            }
-            if(debug) {
-                printf("3b: m_operand = 0x%02X, m_instAddr = 0x%04X\n", m_operand, m_instAddr);
             }
             ++m_instructionState;
         } break;
         case 4: {
             // write to effective address
-            if(debug) {
-                printf("4: val = 0x%02X, m_instAddr = 0x%04X\n", val, m_instAddr);
-            }
-            m_memory.write(m_instAddr, val, 0);
+            memWrite(m_instAddr, val, 0);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
         } break;
@@ -1265,21 +1264,21 @@ void Cpu::jmpInd()
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address low, increment PC
-            m_operand = m_memory.read(m_programCounter++);
+            m_operand = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
             // fetch pointer address high, increment PC
-            m_instAddr = m_memory.read(m_programCounter++) << 8;
+            m_instAddr = memRead(m_programCounter++) << 8;
             m_instAddr |= m_operand;
             ++m_instructionState;
         } break;
         case 2: {
-            m_operand = m_memory.read(m_instAddr++);
+            m_operand = memRead(m_instAddr++);
             ++m_instructionState;
         } break;
         case 3: {
-            m_programCounter = m_memory.read(m_instAddr) << 8;
+            m_programCounter = memRead(m_instAddr) << 8;
             m_programCounter |= m_operand;
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
@@ -1324,7 +1323,7 @@ void Cpu::br(uint8_t flag, uint8_t condition)
     switch(m_instructionState) {
         case 0: {
             // fetch relative jump offset operand
-            m_operand = m_memory.read(m_programCounter++);
+            m_operand = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
@@ -1437,10 +1436,10 @@ void Cpu::iny()
 void Cpu::isr()
 {
     m_pendingIrq = false;
-    m_memory.write(m_stackPointer--, ((m_programCounter >> 8) & 0xFF), m_programCounter);
-    m_memory.write(m_stackPointer--, (m_programCounter & 0xFF), m_programCounter);
-    m_memory.write(m_stackPointer--, m_status.all, m_programCounter);
-    m_programCounter = m_memory.readWord(0xFFFE); // read the location of the main ISR from ROM
+    memWrite(m_stackPointer--, ((m_programCounter >> 8) & 0xFF), m_programCounter);
+    memWrite(m_stackPointer--, (m_programCounter & 0xFF), m_programCounter);
+    memWrite(m_stackPointer--, m_status.all, m_programCounter);
+    m_programCounter = memReadWord(0xFFFE); // read the location of the main ISR from ROM
     //printf("isr triggering ");
     //printStack();
 }
@@ -1450,7 +1449,7 @@ void Cpu::jsr()
     switch(m_instructionState) {
         case 0: {
             // fetch subroutine address low, increment PC
-            m_operand = m_memory.read(m_programCounter++);
+            m_operand = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
@@ -1458,15 +1457,15 @@ void Cpu::jsr()
             ++m_instructionState;
         } break;
         case 2: {
-            m_memory.write(m_stackPointer--, (m_programCounter >> 8), m_programCounter);
+            memWrite(m_stackPointer--, (m_programCounter >> 8), m_programCounter);
             ++m_instructionState;
         } break;
         case 3: {
-            m_memory.write(m_stackPointer--, (m_programCounter & 0xFF), m_programCounter);
+            memWrite(m_stackPointer--, (m_programCounter & 0xFF), m_programCounter);
             ++m_instructionState;
         } break;
         case 4: {
-            m_programCounter = (m_memory.read(m_programCounter) << 8 | m_operand);
+            m_programCounter = (memRead(m_programCounter) << 8 | m_operand);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
             //printf("jsr triggering ");
@@ -1524,11 +1523,11 @@ void Cpu::pha()
     switch(m_instructionState) {
         case 0: {
             // fetch pointer address low, increment PC
-            m_operand = m_memory.read(m_programCounter);
+            m_operand = memRead(m_programCounter);
             ++m_instructionState;
         } break;
         case 1: {
-            m_memory.write(m_stackPointer--, m_accumulator, m_programCounter);
+            memWrite(m_stackPointer--, m_accumulator, m_programCounter);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
             //printf("pha triggering ");
@@ -1541,11 +1540,11 @@ void Cpu::php()
 {
     switch(m_instructionState) {
         case 0: {
-            m_operand = m_memory.read(m_programCounter);
+            m_operand = memRead(m_programCounter);
             ++m_instructionState;
         } break;
         case 1: {
-            m_memory.write(m_stackPointer--, m_status.all, m_programCounter);
+            memWrite(m_stackPointer--, m_status.all, m_programCounter);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
             //printf("php triggering ");
@@ -1558,7 +1557,7 @@ void Cpu::pla()
 {
     switch(m_instructionState) {
         case 0: {
-            m_operand = m_memory.read(m_programCounter);
+            m_operand = memRead(m_programCounter);
             ++m_instructionState;
         } break;
         case 1: {
@@ -1566,7 +1565,7 @@ void Cpu::pla()
             ++m_instructionState;
         } break;
         case 2: {
-            m_accumulator = m_memory.read(m_stackPointer);
+            m_accumulator = memRead(m_stackPointer);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
             //printf("pla triggering ");
@@ -1579,7 +1578,7 @@ void Cpu::plp()
 {
     switch(m_instructionState) {
         case 0: {
-            m_operand = m_memory.read(m_programCounter);
+            m_operand = memRead(m_programCounter);
             ++m_instructionState;
         } break;
         case 1: {
@@ -1587,7 +1586,7 @@ void Cpu::plp()
             ++m_instructionState;
         } break;
         case 2: {
-            m_status.all = m_memory.read(m_stackPointer);
+            m_status.all = memRead(m_stackPointer);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
             //printf("plp triggering ");
@@ -1620,7 +1619,7 @@ void Cpu::rti()
 {
     switch(m_instructionState) {
         case 0: {
-            m_operand = m_memory.read(m_programCounter++);
+            m_operand = memRead(m_programCounter++);
             ++m_instructionState;
         } break;
         case 1: {
@@ -1628,15 +1627,15 @@ void Cpu::rti()
             ++m_instructionState;
         } break;
         case 2: {
-            m_status.all = m_memory.read(m_stackPointer++);
+            m_status.all = memRead(m_stackPointer++);
             ++m_instructionState;
         } break;
         case 3: {
-            m_programCounter = m_memory.read(m_stackPointer++);
+            m_programCounter = memRead(m_stackPointer++);
             ++m_instructionState;
         } break;
         case 4: {
-            m_programCounter |= (m_memory.read(m_stackPointer) << 8);
+            m_programCounter |= (memRead(m_stackPointer) << 8);
             m_instructionState = 0;
             m_cpuState = READ_NEXT_OPCODE;
             //printf("rti triggering ");
@@ -1649,7 +1648,7 @@ void Cpu::rts()
 {
     switch(m_instructionState) {
         case 0: {
-            m_operand = m_memory.read(m_programCounter);
+            m_operand = memRead(m_programCounter);
             ++m_instructionState;
         } break;
         case 1: {
@@ -1657,11 +1656,11 @@ void Cpu::rts()
             ++m_instructionState;
         } break;
         case 2: {
-            m_programCounter = m_memory.read(m_stackPointer++);
+            m_programCounter = memRead(m_stackPointer++);
             ++m_instructionState;
         } break;
         case 3: {
-            m_programCounter |= (m_memory.read(m_stackPointer) << 8);
+            m_programCounter |= (memRead(m_stackPointer) << 8);
             ++m_instructionState;
         } break;
         case 4: {
@@ -1723,11 +1722,15 @@ void Cpu::tay()
 void Cpu::tsx()
 {
     m_xIndex = m_stackPointer & 0xFF;
+    m_status.bits.negativeFlag = (m_xIndex & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == m_xIndex);
 }
 
 void Cpu::txa()
 {
     m_accumulator = m_xIndex;
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::txs()
@@ -1740,37 +1743,15 @@ void Cpu::txs()
 void Cpu::tya()
 {
     m_accumulator = m_yIndex;
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::init()
 {
-    m_memory.write(0x0000, 0xFF, 0);
-    m_memory.write(0x0001, 0x07, 0);
-    canary1  = 0xAAAA;
-    canary2  = 0xAAAA;
-    canary3  = 0xAAAA;
-    canary4  = 0xAAAA;
-    canary5  = 0xAAAA;
-    canary6  = 0xAAAA;
-    canary7  = 0xAAAA;
-    canary8  = 0xAAAA;
-    canary9  = 0xAAAA;
-    canary10 = 0xAAAA;
-    canary11 = 0xAAAA;
-    canary12 = 0xAAAA;
-    canary13 = 0xAAAA;
-    canary14 = 0xAAAA;
-    canary15 = 0xAAAA;
-    canary16 = 0xAAAA;
-    canary17 = 0xAAAA;
-    canary18 = 0xAAAA;
-    canary19 = 0xAAAA;
-    canary20 = 0xAAAA;
-    canary21 = 0xAAAA;
-    canary22 = 0xAAAA;
-    canary23 = 0xAAAA;
-    canary24 = 0xAAAA;
-    m_programCounter = m_memory.readWord(0xFFFC);
+    memWrite(0x0000, 0xFF, 0);
+    memWrite(0x0001, 0x07, 0);
+    m_programCounter = memReadWord(0xFFFC);
     m_stackPointer = 0x1FF;
 
     m_cmdMap["read"] = &Cpu::dbgRead;
@@ -1783,7 +1764,10 @@ void Cpu::init()
     m_cmdMap["step"] = &Cpu::dbgStep;
     m_cmdMap["brka"] = &Cpu::dbgBrka;
     m_cmdMap["brkd"] = &Cpu::dbgBrkd;
+    m_cmdMap["mema"] = &Cpu::dbgMema;
+    m_cmdMap["memd"] = &Cpu::dbgMemd;
     m_cmdMap["lsbp"] = &Cpu::dbgLsbp;
+    m_cmdMap["lsmw"] = &Cpu::dbgLsmw;
     m_cmdMap["seti"] = &Cpu::dbgSeti;
     m_cmdMap["clri"] = &Cpu::dbgClri;
     m_cmdMap["sreg"] = &Cpu::dbgSreg;
@@ -1799,6 +1783,8 @@ Cpu::Cpu(MemoryController& memory)
     , m_totalCycleCount(0)
     , m_debugMode(false)
     , m_stepping(false)
+    , m_memoryWatched(false)
+    , m_instructionState(0)
 {
     init();
 }
@@ -1821,6 +1807,19 @@ int Cpu::removeBreakpoint(uint16_t bpAddr)
     return m_breakpointSet.size();
 }
 
+int Cpu::addMemWatch(uint16_t mwAddr)
+{
+    m_debugMode = true;
+    m_memWatchSet.insert(mwAddr);
+    return m_memWatchSet.size();
+}
+
+int Cpu::removeMemWatch(uint16_t mwAddr)
+{
+    m_memWatchSet.erase(mwAddr);
+    return m_memWatchSet.size();
+}
+
 void Cpu::setDebugState(bool mode)
 {
     m_debugMode = mode;
@@ -1833,9 +1832,9 @@ MemoryController& Cpu::getMemory()
 
 std::string Cpu::decodeInstruction(uint16_t addr)
 {
-    uint8_t op0 = m_memory.read(addr);
-    uint8_t op1 = m_memory.read(addr + 1);
-    uint8_t op2 = m_memory.read(addr + 2);
+    uint8_t op0 = memRead(addr);
+    uint8_t op1 = memRead(addr + 1);
+    uint8_t op2 = memRead(addr + 2);
     int8_t sop1 = (int8_t)op1;
     char output[64] = { 0 };
     switch (op0) {
@@ -1850,7 +1849,7 @@ std::string Cpu::decodeInstruction(uint16_t addr)
         case AHX_aby: sprintf(output, "AHX $%02X%02X,Y", op2, op1);     break;
         case AHX_izy: sprintf(output, "AHX ($%02X),Y", op1);            break;
         case ALR_imm: sprintf(output, "ALR #$%02X", op1);               break;
-        case ANC_im2: sprintf(output, "ANC_im2");                       break;
+        case ANC_im2: sprintf(output, "ANC #$%02X", op1);               break;
         case ANC_imm: sprintf(output, "ANC #$%02X", op1);               break;
         case AND_abs: sprintf(output, "AND $%02X%02X", op2, op1);       break;
         case AND_abx: sprintf(output, "AND $%02X%02X,X", op2, op1);     break;
@@ -1894,208 +1893,208 @@ std::string Cpu::decodeInstruction(uint16_t addr)
         case CPX_imm: sprintf(output, "CPX #$%02X", op1);               break;
         case CPX_zp:  sprintf(output, "CPX $%02X", op1);                break;
         case CPY_abs: sprintf(output, "CPY $%02X%02X", op2, op1);       break;
-        case CPY_imm: sprintf(output, "CPY #$%02X", op1); break;
-        case CPY_zp:  sprintf(output, "CPY $%02X", op1); break;
-        case DCP_abs: sprintf(output, "DCP $%02X%02X", op2, op1); break;
-        case DCP_abx: sprintf(output, "DCP $%02X%02X,X", op2, op1); break;
-        case DCP_aby: sprintf(output, "DCP $%02X%02X,Y", op2, op1); break;
-        case DCP_izx: sprintf(output, "DCP ($%02X,X)", op1); break;
-        case DCP_izy: sprintf(output, "DCP ($%02X),Y", op1); break;
-        case DCP_zp:  sprintf(output, "DCP $%02X", op1); break;
-        case DCP_zpx: sprintf(output, "DCP $%02X,X", op1); break;
-        case DEC_abs: sprintf(output, "DEC $%02X%02X", op2, op1); break;
-        case DEC_abx: sprintf(output, "DEC $%02X%02X,X", op2, op1); break;
-        case DEC_zp:  sprintf(output, "DEC $%02X", op1); break;
-        case DEC_zpx: sprintf(output, "DEC $%02X,X", op1); break;
-        case DEX:     sprintf(output, "DEX"); break;
-        case DEY:     sprintf(output, "DEY"); break;
-        case EOR_abs: sprintf(output, "EOR $%02X%02X", op2, op1); break;
-        case EOR_abx: sprintf(output, "EOR $%02X%02X,X", op2, op1); break;
-        case EOR_aby: sprintf(output, "EOR $%02X%02X,Y", op2, op1); break;
-        case EOR_imm: sprintf(output, "EOR #$%02X", op1); break;
-        case EOR_izx: sprintf(output, "EOR ($%02X,X)", op1); break;
-        case EOR_izy: sprintf(output, "EOR ($%02X),Y", op1); break;
-        case EOR_zp:  sprintf(output, "EOR $%02X", op1); break;
-        case EOR_zpx: sprintf(output, "EOR $%02X,X", op1); break;
-        case INC_abs: sprintf(output, "INC $%02X%02X", op2, op1); break;
-        case INC_abx: sprintf(output, "INC $%02X%02X,X", op2, op1); break;
-        case INC_zp:  sprintf(output, "INC $%02X", op1); break;
-        case INC_zpx: sprintf(output, "INC $%02X,X", op1); break;
-        case INX:     sprintf(output, "INX"); break;
-        case INY:     sprintf(output, "INY"); break;
-        case ISC_abs: sprintf(output, "ISC $%02X%02X", op2, op1); break;
-        case ISC_abx: sprintf(output, "ISC $%02X%02X,X", op2, op1); break;
-        case ISC_aby: sprintf(output, "ISC $%02X%02X,Y", op2, op1); break;
-        case ISC_izx: sprintf(output, "ISC ($%02X,X)", op1); break;
-        case ISC_izy: sprintf(output, "ISC ($%02X),Y", op1); break;
-        case ISC_zp:  sprintf(output, "ISC $%02X", op1); break;
-        case ISC_zpx: sprintf(output, "ISC $%02X,X", op1); break;
-        case JMP_abs: sprintf(output, "JMP $%02X%02X", op2, op1); break;
-        case JMP_ind: sprintf(output, "JMP_ind"); break;
-        case JSR:     sprintf(output, "JSR $%02X%02X", op2, op1); break;
-        case KIL0:    sprintf(output, "KIL0"); break;
-        case KIL1:    sprintf(output, "KIL1"); break;
-        case KIL2:    sprintf(output, "KIL2"); break;
-        case KIL3:    sprintf(output, "KIL3"); break;
-        case KIL4:    sprintf(output, "KIL4"); break;
-        case KIL5:    sprintf(output, "KIL5"); break;
-        case KIL6:    sprintf(output, "KIL6"); break;
-        case KIL7:    sprintf(output, "KIL7"); break;
-        case KIL9:    sprintf(output, "KIL9"); break;
-        case KILB:    sprintf(output, "KILB"); break;
-        case KILD:    sprintf(output, "KILD"); break;
-        case KILF:    sprintf(output, "KILF"); break;
-        case LAS_aby: sprintf(output, "LAS $%02X%02X,Y", op2, op1); break;
-        case LAX_abs: sprintf(output, "LAX $%02X%02X", op2, op1); break;
-        case LAX_aby: sprintf(output, "LAX $%02X%02X,Y", op2, op1); break;
-        case LAX_imm: sprintf(output, "LAX #$%02X", op1); break;
-        case LAX_izx: sprintf(output, "LAX ($%02X,X)", op1); break;
-        case LAX_izy: sprintf(output, "LAX ($%02X),Y", op1); break;
-        case LAX_zp:  sprintf(output, "LAX $%02X", op1); break;
-        case LAX_zpy: sprintf(output, "LAX $%02X,Y", op1); break;
-        case LDA_abs: sprintf(output, "LDA $%02X%02X", op2, op1); break;
-        case LDA_abx: sprintf(output, "LDA $%02X%02X,X", op2, op1); break;
-        case LDA_aby: sprintf(output, "LDA $%02X%02X,Y", op2, op1); break;
-        case LDA_imm: sprintf(output, "LDA #$%02X", op1); break;
-        case LDA_izx: sprintf(output, "LDA ($%02X,X)", op1); break;
-        case LDA_izy: sprintf(output, "LDA ($%02X),Y", op1); break;
-        case LDA_zp:  sprintf(output, "LDA $%02X", op1); break;
-        case LDA_zpx: sprintf(output, "LDA $%02X,X", op1); break;
-        case LDX_abs: sprintf(output, "LDX $%02X%02X", op2, op1); break;
-        case LDX_aby: sprintf(output, "LDX $%02X%02X,Y", op2, op1); break;
-        case LDX_imm: sprintf(output, "LDX #$%02X", op1); break;
-        case LDX_zp:  sprintf(output, "LDX $%02X", op1); break;
-        case LDX_zpy: sprintf(output, "LDX $%02X,Y", op1); break;
-        case LDY_abs: sprintf(output, "LDY $%02X%02X", op2, op1); break;
-        case LDY_abx: sprintf(output, "LDY $%02X%02X,X", op2, op1); break;
-        case LDY_imm: sprintf(output, "LDY #$%02X", op1); break;
-        case LDY_zp:  sprintf(output, "LDY $%02X", op1); break;
-        case LDY_zpx: sprintf(output, "LDY $%02X,X", op1); break;
-        case LSR:     sprintf(output, "LSR"); break;
-        case LSR_abs: sprintf(output, "LSR $%02X%02X", op2, op1); break;
-        case LSR_abx: sprintf(output, "LSR $%02X%02X,X", op2, op1); break;
-        case LSR_zp:  sprintf(output, "LSR $%02X", op1); break;
-        case LSR_zpx: sprintf(output, "LSR $%02X,X", op1); break;
-        case NOP1:    sprintf(output, "NOP1"); break;
-        case NOP3:    sprintf(output, "NOP3"); break;
-        case NOP5:    sprintf(output, "NOP5"); break;
-        case NOP7:    sprintf(output, "NOP7"); break;
-        case NOPD:    sprintf(output, "NOPD"); break;
-        case NOPE:    sprintf(output, "NOPE"); break;
-        case NOPF:    sprintf(output, "NOPF"); break;
-        case NOP_ab1: sprintf(output, "NOP_ab1"); break;
-        case NOP_ab3: sprintf(output, "NOP_ab3"); break;
-        case NOP_ab5: sprintf(output, "NOP_ab5"); break;
-        case NOP_ab7: sprintf(output, "NOP_ab7"); break;
-        case NOP_abD: sprintf(output, "NOP_abD"); break;
-        case NOP_abF: sprintf(output, "NOP_abF"); break;
-        case NOP_abs: sprintf(output, "NOP $%02X%02X", op2, op1); break;
-        case NOP_im2: sprintf(output, "NOP_im2"); break;
-        case NOP_im3: sprintf(output, "NOP_im3"); break;
-        case NOP_im4: sprintf(output, "NOP_im4"); break;
-        case NOP_im5: sprintf(output, "NOP_im5"); break;
-        case NOP_imm: sprintf(output, "NOP #$%02X", op1); break;
-        case NOP_zp0: sprintf(output, "NOP_zp0"); break;
-        case NOP_zp1: sprintf(output, "NOP_zp1"); break;
-        case NOP_zp3: sprintf(output, "NOP_zp3"); break;
-        case NOP_zp4: sprintf(output, "NOP_zp4"); break;
-        case NOP_zp5: sprintf(output, "NOP_zp5"); break;
-        case NOP_zp6: sprintf(output, "NOP_zp6"); break;
-        case NOP_zp7: sprintf(output, "NOP_zp7"); break;
-        case NOP_zpD: sprintf(output, "NOP_zpD"); break;
-        case NOP_zpF: sprintf(output, "NOP_zpF"); break;
-        case ORA_abs: sprintf(output, "ORA $%02X%02X", op2, op1); break;
-        case ORA_abx: sprintf(output, "ORA $%02X%02X,X", op2, op1); break;
-        case ORA_aby: sprintf(output, "ORA $%02X%02X,Y", op2, op1); break;
-        case ORA_imm: sprintf(output, "ORA #$%02X", op1); break;
-        case ORA_izx: sprintf(output, "ORA ($%02X,X)", op1); break;
-        case ORA_izy: sprintf(output, "ORA ($%02X),Y", op1); break;
-        case ORA_zp:  sprintf(output, "ORA $%02X", op1); break;
-        case ORA_zpx: sprintf(output, "ORA $%02X,X", op1); break;
-        case PHA:     sprintf(output, "PHA"); break;
-        case PHP:     sprintf(output, "PHP"); break;
-        case PLA:     sprintf(output, "PLA"); break;
-        case PLP:     sprintf(output, "PLP"); break;
-        case RLA_abs: sprintf(output, "RLA $%02X%02X", op2, op1); break;
-        case RLA_abx: sprintf(output, "RLA $%02X%02X,X", op2, op1); break;
-        case RLA_aby: sprintf(output, "RLA $%02X%02X,Y", op2, op1); break;
-        case RLA_izx: sprintf(output, "RLA ($%02X,X)", op1); break;
-        case RLA_izy: sprintf(output, "RLA ($%02X),Y", op1); break;
-        case RLA_zp:  sprintf(output, "RLA $%02X", op1); break;
-        case RLA_zpx: sprintf(output, "RLA $%02X,X", op1); break;
-        case ROL:     sprintf(output, "ROL"); break;
-        case ROL_abs: sprintf(output, "ROL $%02X%02X", op2, op1); break;
-        case ROL_abx: sprintf(output, "ROL $%02X%02X,X", op2, op1); break;
-        case ROL_zp:  sprintf(output, "ROL $%02X", op1); break;
-        case ROL_zpx: sprintf(output, "ROL $%02X,X", op1); break;
-        case ROR:     sprintf(output, "ROR"); break;
-        case ROR_abs: sprintf(output, "ROR $%02X%02X", op2, op1); break;
-        case ROR_abx: sprintf(output, "ROR $%02X%02X,X", op2, op1); break;
-        case ROR_zp:  sprintf(output, "ROR $%02X", op1); break;
-        case ROR_zpx: sprintf(output, "ROR $%02X,X", op1); break;
-        case RRA_abs: sprintf(output, "RRA $%02X%02X", op2, op1); break;
-        case RRA_abx: sprintf(output, "RRA $%02X%02X,X", op2, op1); break;
-        case RRA_aby: sprintf(output, "RRA $%02X%02X,Y", op2, op1); break;
-        case RRA_izx: sprintf(output, "RRA ($%02X,X)", op1); break;
-        case RRA_izy: sprintf(output, "RRA ($%02X),Y", op1); break;
-        case RRA_zp:  sprintf(output, "RRA $%02X", op1); break;
-        case RRA_zpx: sprintf(output, "RRA $%02X,X", op1); break;
-        case RTI:     sprintf(output, "RTI"); break;
-        case RTS:     sprintf(output, "RTS"); break;
-        case SAX_abs: sprintf(output, "SAX $%02X%02X", op2, op1); break;
-        case SAX_izx: sprintf(output, "SAX ($%02X,X)", op1); break;
-        case SAX_zpy: sprintf(output, "SAX $%02X,Y", op1); break;
-        case SBC_abs: sprintf(output, "SBC $%02X%02X", op2, op1); break;
-        case SBC_abx: sprintf(output, "SBC $%02X%02X,X", op2, op1); break;
-        case SBC_aby: sprintf(output, "SBC $%02X%02X,Y", op2, op1); break;
-        case SBC_im2: sprintf(output, "SBC_im2"); break;
-        case SBC_imm: sprintf(output, "SBC #$%02X", op1); break;
-        case SBC_izx: sprintf(output, "SBC ($%02X,X)", op1); break;
-        case SBC_izy: sprintf(output, "SBC ($%02X),Y", op1); break;
-        case SBC_zp:  sprintf(output, "SBC $%02X", op1); break;
-        case SBC_zpx: sprintf(output, "SBC $%02X,X", op1); break;
-        case SEC:     sprintf(output, "SEC"); break;
-        case SED:     sprintf(output, "SED"); break;
-        case SEI:     sprintf(output, "SEI"); break;
-        case SHX_aby: sprintf(output, "SHX $%02X%02X,Y", op2, op1); break;
-        case SHY_abx: sprintf(output, "SHY $%02X%02X,X", op2, op1); break;
-        case SLO_abs: sprintf(output, "SLO $%02X%02X", op2, op1); break;
-        case SLO_abx: sprintf(output, "SLO $%02X%02X,X", op2, op1); break;
-        case SLO_aby: sprintf(output, "SLO $%02X%02X,Y", op2, op1); break;
-        case SLO_izx: sprintf(output, "SLO ($%02X,X)", op1); break;
-        case SLO_izy: sprintf(output, "SLO ($%02X),Y", op1); break;
-        case SLO_zp:  sprintf(output, "SLO $%02X", op1); break;
-        case SLO_zpx: sprintf(output, "SLO $%02X,X", op1); break;
-        case SRE_abs: sprintf(output, "SRE $%02X%02X", op2, op1); break;
-        case SRE_abx: sprintf(output, "SRE $%02X%02X,X", op2, op1); break;
-        case SRE_aby: sprintf(output, "SRE $%02X%02X,Y", op2, op1); break;
-        case SRE_izx: sprintf(output, "SRE ($%02X,X)", op1); break;
-        case SRE_izy: sprintf(output, "SRE ($%02X),Y", op1); break;
-        case SRE_zp4: sprintf(output, "SRE_zp4"); break;
-        case SRE_zp8: sprintf(output, "SRE_zp8"); break;
-        case SRE_zpx: sprintf(output, "SRE $%02X,X", op1); break;
-        case STA_abs: sprintf(output, "STA $%02X%02X", op2, op1); break;
-        case STA_abx: sprintf(output, "STA $%02X%02X,X", op2, op1); break;
-        case STA_aby: sprintf(output, "STA $%02X%02X,Y", op2, op1); break;
-        case STA_izx: sprintf(output, "STA ($%02X,X)", op1); break;
-        case STA_izy: sprintf(output, "STA ($%02X),Y", op1); break;
-        case STA_zp3: sprintf(output, "STA_zp3"); break;
-        case STA_zpx: sprintf(output, "STA $%02X,X", op1); break;
-        case STX_abs: sprintf(output, "STX $%02X%02X", op2, op1); break;
-        case STX_zp3: sprintf(output, "STX_zp3"); break;
-        case STX_zpx: sprintf(output, "STX $%02X,X", op1); break;
-        case STY_abs: sprintf(output, "STY $%02X%02X", op2, op1); break;
-        case STY_zp3: sprintf(output, "STY_zp3"); break;
-        case STY_zpx: sprintf(output, "STY $%02X,X", op1); break;
-        case TAS_aby: sprintf(output, "TAS $%02X%02X,Y", op2, op1); break;
-        case TAX:     sprintf(output, "TAX"); break;
-        case TAY:     sprintf(output, "TAY"); break;
-        case TSX:     sprintf(output, "TSX"); break;
-        case TXA:     sprintf(output, "TXA"); break;
-        case TXS:     sprintf(output, "TXS"); break;
-        case TYA:     sprintf(output, "TYA"); break;
-        case XAA_imm: sprintf(output, "XAA #$%02X", op1); break;
-        default:      sprintf(output, "unknown"); break;
+        case CPY_imm: sprintf(output, "CPY #$%02X", op1);               break;
+        case CPY_zp:  sprintf(output, "CPY $%02X", op1);                break;
+        case DCP_abs: sprintf(output, "DCP $%02X%02X", op2, op1);       break;
+        case DCP_abx: sprintf(output, "DCP $%02X%02X,X", op2, op1);     break;
+        case DCP_aby: sprintf(output, "DCP $%02X%02X,Y", op2, op1);     break;
+        case DCP_izx: sprintf(output, "DCP ($%02X,X)", op1);            break;
+        case DCP_izy: sprintf(output, "DCP ($%02X),Y", op1);            break;
+        case DCP_zp:  sprintf(output, "DCP $%02X", op1);                break;
+        case DCP_zpx: sprintf(output, "DCP $%02X,X", op1);              break;
+        case DEC_abs: sprintf(output, "DEC $%02X%02X", op2, op1);       break;
+        case DEC_abx: sprintf(output, "DEC $%02X%02X,X", op2, op1);     break;
+        case DEC_zp:  sprintf(output, "DEC $%02X", op1);                break;
+        case DEC_zpx: sprintf(output, "DEC $%02X,X", op1);              break;
+        case DEX:     sprintf(output, "DEX");                           break;
+        case DEY:     sprintf(output, "DEY");                           break;
+        case EOR_abs: sprintf(output, "EOR $%02X%02X", op2, op1);       break;
+        case EOR_abx: sprintf(output, "EOR $%02X%02X,X", op2, op1);     break;
+        case EOR_aby: sprintf(output, "EOR $%02X%02X,Y", op2, op1);     break;
+        case EOR_imm: sprintf(output, "EOR #$%02X", op1);               break;
+        case EOR_izx: sprintf(output, "EOR ($%02X,X)", op1);            break;
+        case EOR_izy: sprintf(output, "EOR ($%02X),Y", op1);            break;
+        case EOR_zp:  sprintf(output, "EOR $%02X", op1);                break;
+        case EOR_zpx: sprintf(output, "EOR $%02X,X", op1);              break;
+        case INC_abs: sprintf(output, "INC $%02X%02X", op2, op1);       break;
+        case INC_abx: sprintf(output, "INC $%02X%02X,X", op2, op1);     break;
+        case INC_zp:  sprintf(output, "INC $%02X", op1);                break;
+        case INC_zpx: sprintf(output, "INC $%02X,X", op1);              break;
+        case INX:     sprintf(output, "INX");                           break;
+        case INY:     sprintf(output, "INY");                           break;
+        case ISC_abs: sprintf(output, "ISC $%02X%02X", op2, op1);       break;
+        case ISC_abx: sprintf(output, "ISC $%02X%02X,X", op2, op1);     break;
+        case ISC_aby: sprintf(output, "ISC $%02X%02X,Y", op2, op1);     break;
+        case ISC_izx: sprintf(output, "ISC ($%02X,X)", op1);            break;
+        case ISC_izy: sprintf(output, "ISC ($%02X),Y", op1);            break;
+        case ISC_zp:  sprintf(output, "ISC $%02X", op1);                break;
+        case ISC_zpx: sprintf(output, "ISC $%02X,X", op1);              break;
+        case JMP_abs: sprintf(output, "JMP $%02X%02X", op2, op1);       break;
+        case JMP_ind: sprintf(output, "JMP_ind");                       break;
+        case JSR:     sprintf(output, "JSR $%02X%02X", op2, op1);       break;
+        case KIL0:    sprintf(output, "KIL0");                          break;
+        case KIL1:    sprintf(output, "KIL1");                          break;
+        case KIL2:    sprintf(output, "KIL2");                          break;
+        case KIL3:    sprintf(output, "KIL3");                          break;
+        case KIL4:    sprintf(output, "KIL4");                          break;
+        case KIL5:    sprintf(output, "KIL5");                          break;
+        case KIL6:    sprintf(output, "KIL6");                          break;
+        case KIL7:    sprintf(output, "KIL7");                          break;
+        case KIL9:    sprintf(output, "KIL9");                          break;
+        case KILB:    sprintf(output, "KILB");                          break;
+        case KILD:    sprintf(output, "KILD");                          break;
+        case KILF:    sprintf(output, "KILF");                          break;
+        case LAS_aby: sprintf(output, "LAS $%02X%02X,Y", op2, op1);     break;
+        case LAX_abs: sprintf(output, "LAX $%02X%02X", op2, op1);       break;
+        case LAX_aby: sprintf(output, "LAX $%02X%02X,Y", op2, op1);     break;
+        case LAX_imm: sprintf(output, "LAX #$%02X", op1);               break;
+        case LAX_izx: sprintf(output, "LAX ($%02X,X)", op1);            break;
+        case LAX_izy: sprintf(output, "LAX ($%02X),Y", op1);            break;
+        case LAX_zp:  sprintf(output, "LAX $%02X", op1);                break;
+        case LAX_zpy: sprintf(output, "LAX $%02X,Y", op1);              break;
+        case LDA_abs: sprintf(output, "LDA $%02X%02X", op2, op1);       break;
+        case LDA_abx: sprintf(output, "LDA $%02X%02X,X", op2, op1);     break;
+        case LDA_aby: sprintf(output, "LDA $%02X%02X,Y", op2, op1);     break;
+        case LDA_imm: sprintf(output, "LDA #$%02X", op1);               break;
+        case LDA_izx: sprintf(output, "LDA ($%02X,X)", op1);            break;
+        case LDA_izy: sprintf(output, "LDA ($%02X),Y", op1);            break;
+        case LDA_zp:  sprintf(output, "LDA $%02X", op1);                break;
+        case LDA_zpx: sprintf(output, "LDA $%02X,X", op1);              break;
+        case LDX_abs: sprintf(output, "LDX $%02X%02X", op2, op1);       break;
+        case LDX_aby: sprintf(output, "LDX $%02X%02X,Y", op2, op1);     break;
+        case LDX_imm: sprintf(output, "LDX #$%02X", op1);               break;
+        case LDX_zp:  sprintf(output, "LDX $%02X", op1);                break;
+        case LDX_zpy: sprintf(output, "LDX $%02X,Y", op1);              break;
+        case LDY_abs: sprintf(output, "LDY $%02X%02X", op2, op1);       break;
+        case LDY_abx: sprintf(output, "LDY $%02X%02X,X", op2, op1);     break;
+        case LDY_imm: sprintf(output, "LDY #$%02X", op1);               break;
+        case LDY_zp:  sprintf(output, "LDY $%02X", op1);                break;
+        case LDY_zpx: sprintf(output, "LDY $%02X,X", op1);              break;
+        case LSR:     sprintf(output, "LSR");                           break;
+        case LSR_abs: sprintf(output, "LSR $%02X%02X", op2, op1);       break;
+        case LSR_abx: sprintf(output, "LSR $%02X%02X,X", op2, op1);     break;
+        case LSR_zp:  sprintf(output, "LSR $%02X", op1);                break;
+        case LSR_zpx: sprintf(output, "LSR $%02X,X", op1);              break;
+        case NOP1:    sprintf(output, "NOP1");                          break;
+        case NOP3:    sprintf(output, "NOP3");                          break;
+        case NOP5:    sprintf(output, "NOP5");                          break;
+        case NOP7:    sprintf(output, "NOP7");                          break;
+        case NOPD:    sprintf(output, "NOPD");                          break;
+        case NOPE:    sprintf(output, "NOPE");                          break;
+        case NOPF:    sprintf(output, "NOPF");                          break;
+        case NOP_ab1: sprintf(output, "NOP_ab1");                       break;
+        case NOP_ab3: sprintf(output, "NOP_ab3");                       break;
+        case NOP_ab5: sprintf(output, "NOP_ab5");                       break;
+        case NOP_ab7: sprintf(output, "NOP_ab7");                       break;
+        case NOP_abD: sprintf(output, "NOP_abD");                       break;
+        case NOP_abF: sprintf(output, "NOP_abF");                       break;
+        case NOP_abs: sprintf(output, "NOP $%02X%02X", op2, op1);       break;
+        case NOP_im2: sprintf(output, "NOP_im2");                       break;
+        case NOP_im3: sprintf(output, "NOP_im3");                       break;
+        case NOP_im4: sprintf(output, "NOP_im4");                       break;
+        case NOP_im5: sprintf(output, "NOP_im5");                       break;
+        case NOP_imm: sprintf(output, "NOP #$%02X", op1);               break;
+        case NOP_zp0: sprintf(output, "NOP_zp0");                       break;
+        case NOP_zp1: sprintf(output, "NOP_zp1");                       break;
+        case NOP_zp3: sprintf(output, "NOP_zp3");                       break;
+        case NOP_zp4: sprintf(output, "NOP_zp4");                       break;
+        case NOP_zp5: sprintf(output, "NOP_zp5");                       break;
+        case NOP_zp6: sprintf(output, "NOP_zp6");                       break;
+        case NOP_zp7: sprintf(output, "NOP_zp7");                       break;
+        case NOP_zpD: sprintf(output, "NOP_zpD");                       break;
+        case NOP_zpF: sprintf(output, "NOP_zpF");                       break;
+        case ORA_abs: sprintf(output, "ORA $%02X%02X", op2, op1);       break;
+        case ORA_abx: sprintf(output, "ORA $%02X%02X,X", op2, op1);     break;
+        case ORA_aby: sprintf(output, "ORA $%02X%02X,Y", op2, op1);     break;
+        case ORA_imm: sprintf(output, "ORA #$%02X", op1);               break;
+        case ORA_izx: sprintf(output, "ORA ($%02X,X)", op1);            break;
+        case ORA_izy: sprintf(output, "ORA ($%02X),Y", op1);            break;
+        case ORA_zp:  sprintf(output, "ORA $%02X", op1);                break;
+        case ORA_zpx: sprintf(output, "ORA $%02X,X", op1);              break;
+        case PHA:     sprintf(output, "PHA");                           break;
+        case PHP:     sprintf(output, "PHP");                           break;
+        case PLA:     sprintf(output, "PLA");                           break;
+        case PLP:     sprintf(output, "PLP");                           break;
+        case RLA_abs: sprintf(output, "RLA $%02X%02X", op2, op1);       break;
+        case RLA_abx: sprintf(output, "RLA $%02X%02X,X", op2, op1);     break;
+        case RLA_aby: sprintf(output, "RLA $%02X%02X,Y", op2, op1);     break;
+        case RLA_izx: sprintf(output, "RLA ($%02X,X)", op1);            break;
+        case RLA_izy: sprintf(output, "RLA ($%02X),Y", op1);            break;
+        case RLA_zp:  sprintf(output, "RLA $%02X", op1);                break;
+        case RLA_zpx: sprintf(output, "RLA $%02X,X", op1);              break;
+        case ROL:     sprintf(output, "ROL");                           break;
+        case ROL_abs: sprintf(output, "ROL $%02X%02X", op2, op1);       break;
+        case ROL_abx: sprintf(output, "ROL $%02X%02X,X", op2, op1);     break;
+        case ROL_zp:  sprintf(output, "ROL $%02X", op1);                break;
+        case ROL_zpx: sprintf(output, "ROL $%02X,X", op1);              break;
+        case ROR:     sprintf(output, "ROR");                           break;
+        case ROR_abs: sprintf(output, "ROR $%02X%02X", op2, op1);       break;
+        case ROR_abx: sprintf(output, "ROR $%02X%02X,X", op2, op1);     break;
+        case ROR_zp:  sprintf(output, "ROR $%02X", op1);                break;
+        case ROR_zpx: sprintf(output, "ROR $%02X,X", op1);              break;
+        case RRA_abs: sprintf(output, "RRA $%02X%02X", op2, op1);       break;
+        case RRA_abx: sprintf(output, "RRA $%02X%02X,X", op2, op1);     break;
+        case RRA_aby: sprintf(output, "RRA $%02X%02X,Y", op2, op1);     break;
+        case RRA_izx: sprintf(output, "RRA ($%02X,X)", op1);            break;
+        case RRA_izy: sprintf(output, "RRA ($%02X),Y", op1);            break;
+        case RRA_zp:  sprintf(output, "RRA $%02X", op1);                break;
+        case RRA_zpx: sprintf(output, "RRA $%02X,X", op1);              break;
+        case RTI:     sprintf(output, "RTI");                           break;
+        case RTS:     sprintf(output, "RTS");                           break;
+        case SAX_abs: sprintf(output, "SAX $%02X%02X", op2, op1);       break;
+        case SAX_izx: sprintf(output, "SAX ($%02X,X)", op1);            break;
+        case SAX_zpy: sprintf(output, "SAX $%02X,Y", op1);              break;
+        case SBC_abs: sprintf(output, "SBC $%02X%02X", op2, op1);       break;
+        case SBC_abx: sprintf(output, "SBC $%02X%02X,X", op2, op1);     break;
+        case SBC_aby: sprintf(output, "SBC $%02X%02X,Y", op2, op1);     break;
+        case SBC_im2: sprintf(output, "SBC_im2");                       break;
+        case SBC_imm: sprintf(output, "SBC #$%02X", op1);               break;
+        case SBC_izx: sprintf(output, "SBC ($%02X,X)", op1);            break;
+        case SBC_izy: sprintf(output, "SBC ($%02X),Y", op1);            break;
+        case SBC_zp:  sprintf(output, "SBC $%02X", op1);                break;
+        case SBC_zpx: sprintf(output, "SBC $%02X,X", op1);              break;
+        case SEC:     sprintf(output, "SEC");                           break;
+        case SED:     sprintf(output, "SED");                           break;
+        case SEI:     sprintf(output, "SEI");                           break;
+        case SHX_aby: sprintf(output, "SHX $%02X%02X,Y", op2, op1);     break;
+        case SHY_abx: sprintf(output, "SHY $%02X%02X,X", op2, op1);     break;
+        case SLO_abs: sprintf(output, "SLO $%02X%02X", op2, op1);       break;
+        case SLO_abx: sprintf(output, "SLO $%02X%02X,X", op2, op1);     break;
+        case SLO_aby: sprintf(output, "SLO $%02X%02X,Y", op2, op1);     break;
+        case SLO_izx: sprintf(output, "SLO ($%02X,X)", op1);            break;
+        case SLO_izy: sprintf(output, "SLO ($%02X),Y", op1);            break;
+        case SLO_zp:  sprintf(output, "SLO $%02X", op1);                break;
+        case SLO_zpx: sprintf(output, "SLO $%02X,X", op1);              break;
+        case SRE_abs: sprintf(output, "SRE $%02X%02X", op2, op1);       break;
+        case SRE_abx: sprintf(output, "SRE $%02X%02X,X", op2, op1);     break;
+        case SRE_aby: sprintf(output, "SRE $%02X%02X,Y", op2, op1);     break;
+        case SRE_izx: sprintf(output, "SRE ($%02X,X)", op1);            break;
+        case SRE_izy: sprintf(output, "SRE ($%02X),Y", op1);            break;
+        case SRE_zp4: sprintf(output, "SRE_zp4");                       break;
+        case SRE_zp8: sprintf(output, "SRE_zp8");                       break;
+        case SRE_zpx: sprintf(output, "SRE $%02X,X", op1);              break;
+        case STA_abs: sprintf(output, "STA $%02X%02X", op2, op1);       break;
+        case STA_abx: sprintf(output, "STA $%02X%02X,X", op2, op1);     break;
+        case STA_aby: sprintf(output, "STA $%02X%02X,Y", op2, op1);     break;
+        case STA_izx: sprintf(output, "STA ($%02X,X)", op1);            break;
+        case STA_izy: sprintf(output, "STA ($%02X),Y", op1);            break;
+        case STA_zp3: sprintf(output, "STA $%02X", op1);                break;
+        case STA_zpx: sprintf(output, "STA $%02X,X", op1);              break;
+        case STX_abs: sprintf(output, "STX $%02X%02X", op2, op1);       break;
+        case STX_zp3: sprintf(output, "STX $%02X", op1);                break;
+        case STX_zpx: sprintf(output, "STX $%02X,X", op1);              break;
+        case STY_abs: sprintf(output, "STY $%02X%02X", op2, op1);       break;
+        case STY_zp3: sprintf(output, "STY $%02X", op1);                break;
+        case STY_zpx: sprintf(output, "STY $%02X,X", op1);              break;
+        case TAS_aby: sprintf(output, "TAS $%02X%02X,Y", op2, op1);     break;
+        case TAX:     sprintf(output, "TAX");                           break;
+        case TAY:     sprintf(output, "TAY");                           break;
+        case TSX:     sprintf(output, "TSX");                           break;
+        case TXA:     sprintf(output, "TXA");                           break;
+        case TXS:     sprintf(output, "TXS");                           break;
+        case TYA:     sprintf(output, "TYA");                           break;
+        case XAA_imm: sprintf(output, "XAA #$%02X", op1);               break;
+        default:      sprintf(output, "unknown");                       break;
     }
     return std::string(output);
 }
@@ -2104,8 +2103,37 @@ void Cpu::printStack()
 {
     printf("stack dump (PC: 0x%04X)\n======================\n", m_opcodeReadFrom);
     for(uint16_t idx = 0x1FF; idx > m_stackPointer; --idx) {
-        printf("0x%04X: %02X\n", idx, m_memory.read(idx));
+        printf("0x%04X: %02X\n", idx, memRead(idx));
     }
+}
+
+uint8_t Cpu::memRead(uint16_t addr)
+{
+    return m_memory.read(addr);
+}
+
+uint16_t Cpu::memReadWord(uint16_t addr)
+{
+    return m_memory.readWord(addr);
+}
+
+void Cpu::memWrite(uint16_t addr, uint8_t data, uint16_t pc)
+{
+    if(m_memWatchSet.end() != m_memWatchSet.find(addr)) {
+        printf("Changing 0x%04X to 0x%02X (PC: %04X)\n", addr, data, pc);
+        m_memoryWatched = true;
+    }
+    m_memory.write(addr, data, pc);
+}
+
+void Cpu::memWriteWord(uint16_t addr, uint16_t word, uint16_t pc)
+{
+    if(m_memWatchSet.end() != m_memWatchSet.find(addr) ||
+       m_memWatchSet.end() != m_memWatchSet.find(addr + 1)) {
+        printf("Changing 0x%04X to 0x%04X (PC: %04X)\n", addr, word, pc);
+        m_memoryWatched = true;
+    }
+    m_memory.writeWord(addr, word, pc);
 }
 
 } // namespace MOS6510

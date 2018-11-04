@@ -203,8 +203,10 @@ void VICII::execute()
                     exit(0);
                 } else if(-1 != ckey) {
                     if(SDL_KEYDOWN == evt.type) {
+                        printf("KeyDown, keycode = %d, ckey = %d\n", keycode, ckey);
                         m_memory->setKeyDown(ckey);
                     } else {
+                        printf("KeyUp, keycode = %d, ckey = %d\n", keycode, ckey);
                         m_memory->setKeyUp(ckey);
                     }
                 }
@@ -226,11 +228,6 @@ void VICII::init()
         exit(rc);
     }
 
-    if(SDL_IsTextInputActive()) {
-        printf("Stopping text input for performance reasons!\n");
-        SDL_StopTextInput();
-    }
-
     m_window = SDL_CreateWindow("C64",
             SDL_WINDOWPOS_UNDEFINED,
             SDL_WINDOWPOS_UNDEFINED,
@@ -240,7 +237,6 @@ void VICII::init()
     m_surface = SDL_CreateRGBSurface(0, 412, 234, 32, 0, 0, 0, 0);
 
     // set default color registers
-    //m_memory.write(646, 14);
     m_registers.reg.backgroundColor0 = 6;
     m_registers.reg.borderColor = 14;
 }

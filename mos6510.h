@@ -146,59 +146,37 @@ enum CpuState {
 
 class Cpu {
 private:
-    uint16_t                        canary1;
     uint16_t                        m_programCounter;
-    uint16_t                        canary2;
     uint16_t                        m_stackPointer;
-    uint16_t                        canary3;
     uint8_t                         m_accumulator;
-    uint16_t                        canary4;
     uint8_t                         m_xIndex;
-    uint16_t                        canary5;
     uint8_t                         m_yIndex;
-    uint16_t                        canary6;
     StatusRegister                  m_status;
-    uint16_t                        canary7;
     MemoryController&               m_memory;
-    uint16_t                        canary8;
     uint16_t                        m_videoTimer;
-    uint16_t                        canary9;
     uint16_t                        m_sysTimer;
-    uint16_t                        canary10;
     bool                            m_pendingIrq;
-    uint16_t                        canary11;
     uint8_t                         m_instructionState;
-    uint16_t                        canary12;
     CpuState                        m_cpuState;
-    uint16_t                        canary13;
     uint16_t                        m_instAddr;
-    uint16_t                        canary14;
     uint8_t                         m_operand;
-    uint16_t                        canary15;
     uint8_t                         m_opcode;
-    uint16_t                        canary16;
     uint16_t                        m_opcodeReadFrom;
-    uint16_t                        canary17;
     std::string                     m_opcodeStr;
-    uint16_t                        canary18;
     uint32_t                        m_totalCycleCount;
-    uint16_t                        canary19;
     std::deque<uint16_t>            m_opcodeHistory;
-    uint16_t                        canary20;
 
     typedef void (MOS6510::Cpu::* opFunc)();
 
     // debug state
     typedef bool (MOS6510::Cpu::* cmdFunc)(const std::vector<std::string>&);
     bool                            m_debugMode;
-    uint16_t                        canary21;
     std::set<uint16_t>              m_breakpointSet;
-    uint16_t                        canary22;
+    std::set<uint16_t>              m_memWatchSet;
     std::map<std::string, cmdFunc>  m_cmdMap;
-    uint16_t                        canary23;
     uint16_t                        m_stepCount;
-    uint16_t                        canary24;
     bool                            m_stepping;
+    bool                            m_memoryWatched;
 
     // Implied addressing
     void rdImp(opFunc operation);
@@ -299,6 +277,12 @@ private:
     uint16_t computeAddress();
     void redrawScreen();
 
+    // memory access
+    uint8_t memRead(uint16_t addr);
+    uint16_t memReadWord(uint16_t addr);
+    void memWrite(uint16_t addr, uint8_t data, uint16_t pc);
+    void memWriteWord(uint16_t addr, uint16_t word, uint16_t pc);
+
     // debug functions
     void debugPrompt();
     bool dbgRead(const std::vector<std::string>& args);
@@ -307,7 +291,10 @@ private:
     bool dbgStep(const std::vector<std::string>& args);
     bool dbgBrka(const std::vector<std::string>& args);
     bool dbgBrkd(const std::vector<std::string>& args);
+    bool dbgMema(const std::vector<std::string>& args);
+    bool dbgMemd(const std::vector<std::string>& args);
     bool dbgLsbp(const std::vector<std::string>& args);
+    bool dbgLsmw(const std::vector<std::string>& args);
     bool dbgSeti(const std::vector<std::string>& args);
     bool dbgClri(const std::vector<std::string>& args);
     bool dbgSreg(const std::vector<std::string>& args);
@@ -320,6 +307,8 @@ public:
 
     int addBreakpoint(uint16_t bpAddr);
     int removeBreakpoint(uint16_t bpAddr);
+    int addMemWatch(uint16_t mwAddr);
+    int removeMemWatch(uint16_t mwAddr);
     void setDebugState(bool mode);
 
     void execute(bool debugBreak);
