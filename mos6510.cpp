@@ -310,7 +310,7 @@ void Cpu::execute(bool debugBreak)
                     m_yIndex,
                     status,
                     m_stackPointer,
-                    m_totalCycleCount);
+                    0);//m_totalCycleCount);
 
             if(debugBreak) { 
                 printf(">>>>>>>>>> CPU paused at 0x%04X <<<<<<<<<<\n", m_programCounter);
