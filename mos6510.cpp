@@ -1412,70 +1412,70 @@ void Cpu::clv()
 void Cpu::cmp()
 {
     m_status.bits.carryFlag = (m_operand <= m_accumulator);
-    m_status.bits.negativeFlag = ((m_accumulator - m_operand) & 0x80) > 0;
+    m_status.bits.negativeFlag = ((m_accumulator - m_operand) & 0x80) == 0x80;
     m_status.bits.zeroFlag = (m_operand == m_accumulator);
 }
 
 void Cpu::cpy()
 {
     m_status.bits.carryFlag = (m_operand <= m_yIndex);
-    m_status.bits.negativeFlag = ((m_yIndex - m_operand) & 0x80) > 0;
+    m_status.bits.negativeFlag = ((m_yIndex - m_operand) & 0x80) == 0x80;
     m_status.bits.zeroFlag = (m_operand == m_yIndex);
 }
 
 void Cpu::cpx()
 {
     m_status.bits.carryFlag = (m_operand <= m_xIndex);
-    m_status.bits.negativeFlag = ((m_xIndex - m_operand) & 0x80) > 0;
+    m_status.bits.negativeFlag = ((m_xIndex - m_operand) & 0x80) == 0x80;
     m_status.bits.zeroFlag = (m_operand == m_xIndex);
 }
 
 void Cpu::dec()
 {
     --m_operand;
-    m_status.bits.negativeFlag = (m_operand & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_operand & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_operand);
 }
 
 void Cpu::dex()
 {
     --m_xIndex;
-    m_status.bits.negativeFlag = (m_xIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_xIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_xIndex);
 }
 
 void Cpu::dey()
 {
     --m_yIndex;
-    m_status.bits.negativeFlag = (m_yIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_yIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_yIndex);
 }
 
 void Cpu::eor()
 {
     m_accumulator ^= m_operand;
-    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::inc()
 {
     ++m_operand;
-    m_status.bits.negativeFlag = (m_operand & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_operand & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_operand);
 }
 
 void Cpu::inx()
 {
     ++m_xIndex;
-    m_status.bits.negativeFlag = (m_xIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_xIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_xIndex);
 }
 
 void Cpu::iny()
 {
     ++m_yIndex;
-    m_status.bits.negativeFlag = (m_yIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_yIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_yIndex);
 }
 
@@ -1486,8 +1486,6 @@ void Cpu::isr()
     memWrite(m_stackPointer--, (m_programCounter & 0xFF), m_programCounter);
     memWrite(m_stackPointer--, m_status.all, m_programCounter);
     m_programCounter = memReadWord(0xFFFE); // read the location of the main ISR from ROM
-    //printf("isr triggering ");
-    //printStack();
 }
 
 void Cpu::jsr()
@@ -1552,7 +1550,7 @@ void Cpu::lsr()
 
 void Cpu::nop()
 {
-    ++m_programCounter;
+    //++m_programCounter;
     m_cpuState = CpuState::READ_NEXT_OPCODE;
     m_instructionState = 0;
 }
@@ -1614,8 +1612,8 @@ void Cpu::pla()
             m_accumulator = memRead(m_stackPointer);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
-            //printf("pla triggering ");
-            //printStack();
+            m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+            m_status.bits.zeroFlag = (0 == m_accumulator);
         } break;
     }
 }
@@ -1754,36 +1752,34 @@ void Cpu::sei()
 void Cpu::tax()
 {
     m_xIndex = m_accumulator;
-    m_status.bits.negativeFlag = (m_xIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_xIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_xIndex);
 }
 
 void Cpu::tay()
 {
     m_yIndex = m_accumulator;
-    m_status.bits.negativeFlag = (m_yIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_yIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_yIndex);
 }
 
 void Cpu::tsx()
 {
     m_xIndex = m_stackPointer & 0xFF;
-    m_status.bits.negativeFlag = (m_xIndex & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_xIndex & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_xIndex);
 }
 
 void Cpu::txa()
 {
     m_accumulator = m_xIndex;
-    m_status.bits.negativeFlag = (m_accumulator & 0x80) > 0;
+    m_status.bits.negativeFlag = (m_accumulator & 0x80) == 0x80;
     m_status.bits.zeroFlag = (0 == m_accumulator);
 }
 
 void Cpu::txs()
 {
     m_stackPointer = 0x100 | m_xIndex;
-    //printf("txs triggering ");
-    //printStack();
 }
 
 void Cpu::tya()
