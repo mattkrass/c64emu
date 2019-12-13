@@ -1,6 +1,7 @@
 #ifndef INCLUDED_MOS6510_H
 #define INCLUDED_MOS6510_H
 
+#include <fstream>
 #include <map>
 #include <set>
 #include <vector>
@@ -177,6 +178,10 @@ private:
     uint16_t                        m_stepCount;
     bool                            m_stepping;
     bool                            m_memoryWatched;
+    uint16_t                        m_startTraceAddr;
+    uint16_t                        m_endTraceAddr;
+    std::ofstream                   m_traceFile;
+    bool                            m_tracingExec;
 
     // Implied addressing
     void rdImp(opFunc operation);
@@ -284,6 +289,7 @@ private:
     void memWriteWord(uint16_t addr, uint16_t word, uint16_t pc);
 
     // debug functions
+    void writeTrace();
     void debugPrompt();
     bool dbgRead(const std::vector<std::string>& args);
     bool dbgWrit(const std::vector<std::string>& args);
@@ -310,6 +316,7 @@ public:
     int addMemWatch(uint16_t mwAddr);
     int removeMemWatch(uint16_t mwAddr);
     void setDebugState(bool mode);
+    void setTraceRange(uint16_t start, uint16_t end);
 
     void execute(bool debugBreak);
     MemoryController& getMemory();

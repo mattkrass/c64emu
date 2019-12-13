@@ -270,6 +270,35 @@ bool Cpu::dbgPstk(const std::vector<std::string>& args)
     return true; // stay in debug
 }
 
+void Cpu::writeTrace()
+{
+    if(!m_tracingExec) {
+        return;
+    }
+    char status[11];
+    snprintf(status, sizeof(status), "S:%c%c%c%c%c%c%c%c",
+            m_status.bits.carryFlag             ? 'C' : '.',
+            m_status.bits.zeroFlag              ? 'Z' : '.',
+            m_status.bits.interruptDisableFlag  ? 'I' : '.',
+            m_status.bits.decimalModeFlag       ? 'D' : '.',
+            m_status.bits.breakFlag             ? 'B' : '.',
+            m_status.bits.unusedFlag            ? 'U' : '.',
+            m_status.bits.overflowFlag          ? 'O' : '.',
+            m_status.bits.negativeFlag          ? 'N' : '.');
+    uint16_t pc = m_programCounter;
+    const std::string decoded = decodeInstruction(pc);
+    char trace[161] = { 0 };
+    snprintf(trace, sizeof(trace), "PC:0x%04X, OP:%-14s, A:0x%02X, X:0x%02X, Y:0x%02X, %s, SP:0x%03X\n",
+            m_programCounter,
+            decoded.c_str(),
+            m_accumulator,
+            m_xIndex,
+            m_yIndex,
+            status,
+            m_stackPointer);
+    m_traceFile << trace;
+}
+
 void Cpu::execute(bool debugBreak)
 {
     ++m_totalCycleCount;
@@ -278,13 +307,30 @@ void Cpu::execute(bool debugBreak)
             isr();
         }
 
-        ///assert(m_programCounter > 0x4000);
         m_opcode = memRead(m_programCounter);
         m_opcodeReadFrom = m_programCounter;
         m_opcodeHistory.push_back(m_opcodeReadFrom);
         while(m_opcodeHistory.size() > 100) {
             m_opcodeHistory.pop_front();
         }
+        if(m_startTraceAddr && m_endTraceAddr) {
+            if(!m_tracingExec) {
+                if(m_programCounter == m_startTraceAddr) {
+                    printf("Starting trace at 0x%04X\n", m_programCounter);
+                    m_traceFile.open("trace.log", std::ofstream::trunc);
+                    m_tracingExec = true;
+                    writeTrace();
+                }
+            } else {
+                writeTrace();
+                if(m_programCounter == m_endTraceAddr) {
+                    printf("Ending trace at 0x%04X\n", m_programCounter);
+                    m_traceFile.close();
+                    m_tracingExec = false;
+                }
+            }
+        }
+
         if(m_debugMode || debugBreak || m_stepping || m_memoryWatched) {
             if(m_stepCount) {
                 --m_stepCount;
@@ -1823,6 +1869,12 @@ int Cpu::removeMemWatch(uint16_t mwAddr)
 void Cpu::setDebugState(bool mode)
 {
     m_debugMode = mode;
+}
+
+void Cpu::setTraceRange(uint16_t start, uint16_t end)
+{
+    m_startTraceAddr = start;
+    m_endTraceAddr = end;
 }
 
 MemoryController& Cpu::getMemory()

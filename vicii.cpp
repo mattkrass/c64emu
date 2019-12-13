@@ -203,10 +203,10 @@ void VICII::execute()
                     exit(0);
                 } else if(-1 != ckey) {
                     if(SDL_KEYDOWN == evt.type) {
-                        printf("KeyDown, keycode = %d, ckey = %d\n", keycode, ckey);
+                        // printf("KeyDown, keycode = %d, ckey = %d\n", keycode, ckey);
                         m_memory->setKeyDown(ckey);
                     } else {
-                        printf("KeyUp, keycode = %d, ckey = %d\n", keycode, ckey);
+                        // printf("KeyUp, keycode = %d, ckey = %d\n", keycode, ckey);
                         m_memory->setKeyUp(ckey);
                     }
                 }

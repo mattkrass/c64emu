@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     MOS6510::VICII vicii(&memoryController, cgrom);
     MOS6510::IOController io(&memoryController);
     bool setDebug = false;
-    mos6510.addBreakpoint(0xA871);
+    mos6510.setTraceRange(0xA871, 0xE5CD);
     while(1) {
         mos6510.execute(setDebug);
         vicii.execute();
