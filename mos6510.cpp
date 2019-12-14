@@ -270,11 +270,8 @@ bool Cpu::dbgPstk(const std::vector<std::string>& args)
     return true; // stay in debug
 }
 
-void Cpu::writeTrace()
+void Cpu::writeTrace(std::ostream& os)
 {
-    if(!m_tracingExec) {
-        return;
-    }
     char status[11];
     snprintf(status, sizeof(status), "S:%c%c%c%c%c%c%c%c",
             m_status.bits.carryFlag             ? 'C' : '.',
@@ -296,7 +293,7 @@ void Cpu::writeTrace()
             m_yIndex,
             status,
             m_stackPointer);
-    m_traceFile << trace;
+    os << trace;
 }
 
 void Cpu::execute(bool debugBreak)
@@ -319,10 +316,10 @@ void Cpu::execute(bool debugBreak)
                     printf("Starting trace at 0x%04X\n", m_programCounter);
                     m_traceFile.open("trace.log", std::ofstream::trunc);
                     m_tracingExec = true;
-                    writeTrace();
+                    writeTrace(m_traceFile);
                 }
             } else {
-                writeTrace();
+                writeTrace(m_traceFile);
                 if(m_programCounter == m_endTraceAddr) {
                     printf("Ending trace at 0x%04X\n", m_programCounter);
                     m_traceFile.close();
@@ -336,40 +333,22 @@ void Cpu::execute(bool debugBreak)
                 --m_stepCount;
             }
 
-            char status[11];
-            snprintf(status, sizeof(status), "S:%c%c%c%c%c%c%c%c",
-                    m_status.bits.carryFlag             ? 'C' : '.',
-                    m_status.bits.zeroFlag              ? 'Z' : '.',
-                    m_status.bits.interruptDisableFlag  ? 'I' : '.',
-                    m_status.bits.decimalModeFlag       ? 'D' : '.',
-                    m_status.bits.breakFlag             ? 'B' : '.',
-                    m_status.bits.unusedFlag            ? 'U' : '.',
-                    m_status.bits.overflowFlag          ? 'O' : '.',
-                    m_status.bits.negativeFlag          ? 'N' : '.');
-            uint16_t pc = m_programCounter;
-            const std::string decoded = decodeInstruction(pc);
-            printf("PC:0x%04X, OP:%-14s, A:0x%02X, X:0x%02X, Y:0x%02X, %s, SP:0x%03X, CYC:%d\n",
-                    m_programCounter,
-                    decoded.c_str(),
-                    m_accumulator,
-                    m_xIndex,
-                    m_yIndex,
-                    status,
-                    m_stackPointer,
-                    m_totalCycleCount);
-
             if(debugBreak) {
+                writeTrace(std::cout);
                 printf(">>>>>>>>>> CPU paused at 0x%04X <<<<<<<<<<\n", m_programCounter);
                 debugPrompt();
             } else if(m_breakpointSet.end() != m_breakpointSet.find(m_programCounter)) {
+                writeTrace(std::cout);
                 printf(">>>>>>>>>> Hit breakpoint at 0x%04X <<<<<<<<<<\n", m_programCounter);
                 debugPrompt();
             } else if(m_stepping) {
                 if(!m_stepCount) {
+                    writeTrace(std::cout);
                     printf(">>>>>>>>>> Finished step count at 0x%04X <<<<<<<<<<\n", m_programCounter);
                     debugPrompt();
                 }
             } else if(m_memoryWatched) {
+                writeTrace(std::cout);
                 printf(">>>>>>>>>> Stopped at 0x%04X after memory write <<<<<<<<<<\n", m_programCounter);
                 debugPrompt();
             }

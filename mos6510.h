@@ -289,7 +289,7 @@ private:
     void memWriteWord(uint16_t addr, uint16_t word, uint16_t pc);
 
     // debug functions
-    void writeTrace();
+    void writeTrace(std::ostream& os);
     void debugPrompt();
     bool dbgRead(const std::vector<std::string>& args);
     bool dbgWrit(const std::vector<std::string>& args);
