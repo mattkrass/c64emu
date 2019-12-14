@@ -266,7 +266,7 @@ bool Cpu::dbgSreg(const std::vector<std::string>& args)
 
 bool Cpu::dbgPstk(const std::vector<std::string>& args)
 {
-    printStack();   
+    printStack();
     return true; // stay in debug
 }
 
@@ -356,9 +356,9 @@ void Cpu::execute(bool debugBreak)
                     m_yIndex,
                     status,
                     m_stackPointer,
-                    0);//m_totalCycleCount);
+                    m_totalCycleCount);
 
-            if(debugBreak) { 
+            if(debugBreak) {
                 printf(">>>>>>>>>> CPU paused at 0x%04X <<<<<<<<<<\n", m_programCounter);
                 debugPrompt();
             } else if(m_breakpointSet.end() != m_breakpointSet.find(m_programCounter)) {
@@ -1330,7 +1330,7 @@ void Cpu::jmpInd()
             m_instructionState = 0;
         } break;
     }
-}  
+}
 
 void Cpu::adc()
 {
@@ -1512,8 +1512,6 @@ void Cpu::jsr()
             m_programCounter = (memRead(m_programCounter) << 8 | m_operand);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
-            //printf("jsr triggering ");
-            //printStack();
         } break;
     }
 }
@@ -1574,8 +1572,6 @@ void Cpu::pha()
             memWrite(m_stackPointer--, m_accumulator, m_programCounter);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
-            //printf("pha triggering ");
-            //printStack();
         } break;
     }
 }
@@ -1591,8 +1587,6 @@ void Cpu::php()
             memWrite(m_stackPointer--, m_status.all, m_programCounter);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
-            //printf("php triggering ");
-            //printStack();
         } break;
     }
 }
@@ -1633,8 +1627,6 @@ void Cpu::plp()
             m_status.all = memRead(m_stackPointer);
             m_cpuState = CpuState::READ_NEXT_OPCODE;
             m_instructionState = 0;
-            //printf("plp triggering ");
-            //printStack();
         } break;
     }
 }
@@ -1682,8 +1674,6 @@ void Cpu::rti()
             m_programCounter |= (memRead(m_stackPointer) << 8);
             m_instructionState = 0;
             m_cpuState = READ_NEXT_OPCODE;
-            //printf("rti triggering ");
-            //printStack();
         } break;
     }
 }
@@ -1711,8 +1701,6 @@ void Cpu::rts()
             ++m_programCounter;
             m_instructionState = 0;
             m_cpuState = READ_NEXT_OPCODE;
-            //printf("rts triggering ");
-            //printStack();
         } break;
     }
 }
