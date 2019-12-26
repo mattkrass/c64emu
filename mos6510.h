@@ -153,7 +153,7 @@ private:
     uint8_t                         m_xIndex;
     uint8_t                         m_yIndex;
     StatusRegister                  m_status;
-    MemoryController&               m_memory;
+    IMemoryController&              m_memory;
     uint16_t                        m_videoTimer;
     uint16_t                        m_sysTimer;
     bool                            m_pendingIrq;
@@ -308,7 +308,7 @@ private:
 
 public:
     Cpu(const Cpu& rhs);
-    Cpu(MemoryController& memory);
+    Cpu(IMemoryController& memory);
     ~Cpu();
 
     int addBreakpoint(uint16_t bpAddr);
@@ -319,7 +319,7 @@ public:
     void setTraceRange(uint16_t start, uint16_t end);
 
     void execute(bool debugBreak);
-    MemoryController& getMemory();
+    IMemoryController& getMemory();
     std::string decodeInstruction(uint16_t addr);
     void printStack();
 };

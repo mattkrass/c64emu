@@ -1,6 +1,7 @@
 #ifndef INCLUDED_MEMORY_CONTROLLER_H
 #define INCLUDED_MEMORY_CONTROLLER_H
 #include <stdint.h>
+#include "imemorycontroller.h"
 #include "vicii.h"
 #include "iocontroller.h"
 
@@ -11,7 +12,7 @@ enum BankControlSignals {
     CHAREN  = 0x04
 };
 
-class MemoryController {
+class MemoryController : public IMemoryController {
 private:
     uint8_t*        m_sram;
     uint8_t*        m_rom;

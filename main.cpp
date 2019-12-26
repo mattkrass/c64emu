@@ -7,6 +7,7 @@
 #include "vicii.h"
 #include "iocontroller.h"
 #include <stdio.h>
+#include <gtest/gtest.h>
 
 bool g_setDebug = false;
 void sig_callback(int signum)
@@ -24,6 +25,12 @@ int main(int argc, char **argv)
         std::cerr << "Need ROM filename!"
                   << std::endl;
         return -1;
+    }
+
+    if(std::string(argv[1]) == "--test") {
+        std::cout << "Test mode." << std::endl;
+        testing::InitGoogleTest(&argc, argv);
+        return RUN_ALL_TESTS();
     }
 
     std::cout << "Booting up the MOS6510 now..."

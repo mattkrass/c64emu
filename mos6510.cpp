@@ -1785,7 +1785,7 @@ void Cpu::init()
     m_cpuState = CpuState::READ_NEXT_OPCODE;
 }
 
-Cpu::Cpu(MemoryController& memory)
+Cpu::Cpu(IMemoryController& memory)
     : m_memory(memory)
     , m_videoTimer(0)
     , m_pendingIrq(false)
@@ -1840,7 +1840,7 @@ void Cpu::setTraceRange(uint16_t start, uint16_t end)
     m_endTraceAddr = end;
 }
 
-MemoryController& Cpu::getMemory()
+IMemoryController& Cpu::getMemory()
 {
     return m_memory;
 }
